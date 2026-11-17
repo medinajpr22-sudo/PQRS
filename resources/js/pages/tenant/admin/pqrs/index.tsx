@@ -1,0 +1,279 @@
+import { Head, Link, router } from '@inertiajs/react';
+import { Inbox, Search, X } from 'lucide-react';
+import { useState } from 'react';
+import { DueDate } from '@/components/pqrs/due-date';
+import { PageHeader } from '@/components/pqrs/page-header';
+import { Pagination } from '@/components/pqrs/pagination';
+import { OverdueBadge, StatusBadge } from '@/components/pqrs/status-badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formatDate } from '@/lib/format';
+import admin from '@/routes/tenant/admin';
+import type { Option, Paginated, PqrsListItem } from '@/types';
+
+type Filters = {
+    search: string;
+    status: string | null;
+    type: string | null;
+    overdue: boolean;
+};
+
+type Props = {
+    pqrs: Paginated<PqrsListItem>;
+    filters: Filters;
+    statuses: Option[];
+    types: Option[];
+};
+
+export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
+    const [search, setSearch] = useState(filters.search);
+
+    const apply = (next: Partial<Filters>) => {
+        const merged = { ...filters, search, ...next };
+        const query: Record<string, string | number> = {};
+
+        if (merged.search) {
+            query.search = merged.search;
+        }
+
+        if (merged.status) {
+            query.status = merged.status;
+        }
+
+        if (merged.type) {
+            query.type = merged.type;
+        }
+
+        if (merged.overdue) {
+            query.overdue = 1;
+        }
+
+        router.get(
+            admin.pqrs.index.url({ query }),
+            {},
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    };
+
+    const hasFilters =
+        !!filters.search ||
+        !!filters.status ||
+        !!filters.type ||
+        filters.overdue;
+
+    return (
+        <>
+            <Head title="Solicitudes PQRS" />
+
+            <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+                <PageHeader
+                    title="Solicitudes PQRS"
+                    description="Busca, filtra y gestiona las solicitudes radicadas."
+                />
+
+                <Card className="gap-0 py-0">
+                    <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
+                        <form
+                            className="relative flex-1"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                apply({ search });
+                            }}
+                        >
+                            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Buscar por radicado, nombre, correo, documento o asunto…"
+                                className="pl-9"
+                            />
+                        </form>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <NativeSelect
+                                aria-label="Estado"
+                                value={filters.status ?? ''}
+                                onChange={(e) =>
+                                    apply({ status: e.target.value || null })
+                                }
+                                className="w-40"
+                            >
+                                <option value="">Todos los estados</option>
+                                {statuses.map((s) => (
+                                    <option key={s.value} value={s.value}>
+                                        {s.label}
+                                    </option>
+                                ))}
+                            </NativeSelect>
+                            <NativeSelect
+                                aria-label="Tipo"
+                                value={filters.type ?? ''}
+                                onChange={(e) =>
+                                    apply({ type: e.target.value || null })
+                                }
+                                className="w-40"
+                            >
+                                <option value="">Todos los tipos</option>
+                                {types.map((t) => (
+                                    <option key={t.value} value={t.value}>
+                                        {t.label}
+                                    </option>
+                                ))}
+                            </NativeSelect>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="overdue"
+                                    checked={filters.overdue}
+                                    onCheckedChange={(v) =>
+                                        apply({ overdue: v === true })
+                                    }
+                                />
+                                <Label htmlFor="overdue">Solo vencidas</Label>
+                            </div>
+                            {hasFilters && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        setSearch('');
+                                        router.get(admin.pqrs.index.url());
+                                    }}
+                                >
+                                    <X />
+                                    Limpiar
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">
+                                        Radicado
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
+                                        Solicitante
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
+                                        Asunto
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
+                                        Estado
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
+                                        Radicada
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
+                                        Vence
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {pqrs.data.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={6}
+                                            className="px-4 py-16 text-center"
+                                        >
+                                            <Inbox className="mx-auto size-8 text-muted-foreground" />
+                                            <p className="mt-2 font-medium">
+                                                No hay solicitudes
+                                            </p>
+                                            <p className="text-sm text-muted-foreground">
+                                                {hasFilters
+                                                    ? 'Prueba con otros filtros.'
+                                                    : 'Las solicitudes radicadas en el portal aparecerán aquí.'}
+                                            </p>
+                                        </td>
+                                    </tr>
+                                )}
+                                {pqrs.data.map((p) => (
+                                    <tr
+                                        key={p.id}
+                                        className="cursor-pointer transition-colors hover:bg-muted/40"
+                                        onClick={() =>
+                                            router.visit(
+                                                admin.pqrs.show.url(p.radicado),
+                                            )
+                                        }
+                                    >
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <Link
+                                                href={admin.pqrs.show(
+                                                    p.radicado,
+                                                )}
+                                                className="font-mono text-xs font-semibold hover:underline"
+                                                onClick={(e) =>
+                                                    e.stopPropagation()
+                                                }
+                                            >
+                                                {p.radicado}
+                                            </Link>
+                                            <p className="text-xs text-muted-foreground">
+                                                {p.type_label}
+                                            </p>
+                                        </td>
+                                        <td className="max-w-48 px-4 py-3">
+                                            <p className="truncate font-medium">
+                                                {p.requester_name}
+                                            </p>
+                                            <p className="truncate text-xs text-muted-foreground">
+                                                {p.requester_email}
+                                            </p>
+                                        </td>
+                                        <td className="max-w-72 px-4 py-3">
+                                            <p className="truncate">
+                                                {p.subject}
+                                            </p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-col items-start gap-1">
+                                                <StatusBadge
+                                                    status={p.status}
+                                                    label={p.status_label}
+                                                />
+                                                {p.is_overdue && (
+                                                    <OverdueBadge />
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap tabular-nums">
+                                            {formatDate(p.created_at)}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <DueDate
+                                                dueAt={p.due_at}
+                                                open={
+                                                    p.status === 'radicada' ||
+                                                    p.status === 'en_tramite'
+                                                }
+                                            />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <Pagination page={pqrs} noun="solicitudes" />
+                </Card>
+            </div>
+        </>
+    );
+}
+
+PqrsIndex.layout = {
+    breadcrumbs: [
+        { title: 'Resumen', href: admin.dashboard() },
+        { title: 'Solicitudes', href: admin.pqrs.index() },
+    ],
+};
