@@ -27,14 +27,19 @@ enum PqrsType: string
         };
     }
 
+    /**
+     * Definición que ve el ciudadano en el portal (cada empresa puede
+     * cambiarla en su formulario). Las empresas de salud suelen decir
+     * «…con la prestación del servicio de salud» en el reclamo.
+     */
     public function description(): string
     {
         return match ($this) {
-            self::Peticion => 'Solicitud de información, documentos o actuaciones.',
-            self::Queja => 'Inconformidad con la atención o conducta de un colaborador.',
-            self::Reclamo => 'Inconformidad por la prestación deficiente de un servicio o producto.',
-            self::Sugerencia => 'Propuesta para mejorar nuestros servicios.',
-            self::Felicitacion => 'Reconocimiento por un buen servicio recibido.',
+            self::Peticion => 'Mediante la cual una persona, por motivos de interés general o particular, solicita la intervención de la entidad para la resolución de una situación, la prestación de un servicio, la información o el requerimiento de copia de documentos, entre otros.',
+            self::Queja => 'Manifestación de una persona, a través de la cual expresa inconformidad con el actuar de un funcionario de la entidad.',
+            self::Reclamo => 'Los usuarios dan a conocer su insatisfacción con la prestación de un servicio o la entrega de un producto de la entidad.',
+            self::Sugerencia => 'Recomendación o propuesta que se formula para el mejoramiento de la prestación de los servicios a cargo de la entidad.',
+            self::Felicitacion => 'Opiniones o palabras que enaltecen una labor realizada, un servicio o una persona en particular.',
             self::Denuncia => 'Reporte de conductas irregulares o posibles actos de corrupción.',
         };
     }
