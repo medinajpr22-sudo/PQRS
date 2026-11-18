@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\TenantAdminController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantFormController;
 use App\Http\Controllers\Central\TenantStatusController;
@@ -32,6 +33,9 @@ Route::middleware('central')->group(function () {
         Route::post('empresas/{tenant}/diseno', [TenantThemeController::class, 'update'])->name('tenants.theme.update');
         Route::put('empresas/{tenant}/formulario', [TenantFormController::class, 'update'])->name('tenants.form.update');
         Route::patch('empresas/{tenant}/estado', [TenantStatusController::class, 'update'])->name('tenants.status.update');
+        Route::put('empresas/{tenant}/administradores/{admin}', [TenantAdminController::class, 'update'])
+            ->whereNumber('admin')
+            ->name('tenants.admins.update');
     });
 
     require __DIR__.'/settings.php';

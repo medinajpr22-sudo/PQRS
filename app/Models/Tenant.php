@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PqrsStatus;
+use App\Enums\UserRole;
 use App\Support\TenantDefaults;
 use Illuminate\Support\Carbon;
 use Stancl\Tenancy\Contracts\TenantWithDatabase;
@@ -44,6 +45,56 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         'database', 'testing', 'mysql', 'sys', 'information_schema',
         'performance_schema', 'postgres', 'template0', 'template1',
     ];
+
+    /**
+     * Ejecuta código dentro de la base de datos de esta empresa.
+     *
+     * Igual que TenantRun::run() de stancl/tenancy, pero siempre vuelve al
+     * contexto anterior aunque el código lance una excepción (p. ej. un error
+     * de validación). Sin esto, la petición del panel central se quedaría
+     * conectada a la base de la empresa y guardaría ahí su sesión.
+     *
+     * @template TReturn
+     *
+     * @param  callable(self): TReturn  $callback
+     * @return TReturn
+     */
+    public function run(callable $callback): mixed
+    {
+        $originalTenant = tenant();
+
+        tenancy()->initialize($this);
+
+        try {
+            return $callback($this);
+        } finally {
+            if ($originalTenant) {
+                tenancy()->initialize($originalTenant);
+            } else {
+                tenancy()->end();
+            }
+        }
+    }
+
+    /**
+     * Administradores de la empresa (viven en su propia base de datos).
+     *
+     * @return list<array{id: int, name: string, email: string, is_active: bool}>
+     */
+    public function companyAdmins(): array
+    {
+        return $this->run(fn () => array_values(User::query()
+            ->where('role', UserRole::Admin)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'is_active'])
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'is_active' => (bool) $u->is_active,
+            ])
+            ->all()));
+    }
 
     /**
      * Nombre real de la base de datos de esta empresa. Lo define el super

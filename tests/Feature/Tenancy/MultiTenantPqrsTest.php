@@ -602,3 +602,53 @@ test('pqrs without a sede are only visible to the company admin', function () {
     $this->actingAs($admin)->patch(portal($tenant, "admin/pqrs/{$radicado}/sede"), ['sede_id' => $neiva->id])->assertSessionHasNoErrors();
     $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$radicado}"))->assertOk();
 });
+
+test('the super admin edits the name and email of a company admin', function () {
+    $superAdmin = User::factory()->create();
+    $tenant = makeCompany('phi');
+    [$admin, $otro, $agente] = $tenant->run(fn () => [
+        User::first(),
+        makeStaff('otro', UserRole::Admin),
+        makeStaff('carla'),
+    ]);
+
+    $this->actingAs($superAdmin)->get(route('tenants.edit', $tenant))
+        ->assertInertia(fn ($page) => $page->has('tenant.admins', 2));
+
+    $url = fn (User $u) => route('tenants.admins.update', ['tenant' => $tenant, 'admin' => $u->id]);
+
+    // Un correo que ya usa otra persona de la empresa es un error de validación.
+    $this->actingAs($superAdmin)
+        ->put($url($admin), ['name' => 'Admin', 'email' => 'OTRO@staff.test'])
+        ->assertSessionHasErrors('email');
+
+    // El error no deja la petición «dentro» de la empresa.
+    expect(tenancy()->initialized)->toBeFalse();
+
+    $this->actingAs($superAdmin)
+        ->put($url($admin), ['name' => 'Laura Directora', 'email' => ' Laura@Phi.TEST '])
+        ->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => User::find($admin->id)->only(['name', 'email'])))
+        ->toBe(['name' => 'Laura Directora', 'email' => 'laura@phi.test']);
+
+    // Solo administradores: un agente no se edita desde aquí.
+    $this->actingAs($superAdmin)
+        ->put($url($agente), ['name' => 'X', 'email' => 'x@phi.test'])
+        ->assertNotFound();
+
+    // Ya entra al panel de la empresa con el correo nuevo.
+    $this->app['auth']->forgetGuards();
+    $this->post(portal($tenant, 'admin/login'), ['email' => 'laura@phi.test', 'password' => 'password'])
+        ->assertRedirect(route('tenant.admin.dashboard'));
+});
+
+test('company admins cannot use the super admin endpoint', function () {
+    $tenant = makeCompany('chi');
+    $admin = $tenant->run(fn () => User::first());
+
+    // Las rutas centrales no existen en el dominio de la empresa.
+    $this->actingAs($admin)
+        ->put('http://'.$tenant->primaryDomain()."/empresas/chi/administradores/{$admin->id}", ['name' => 'X', 'email' => 'x@chi.test'])
+        ->assertNotFound();
+});

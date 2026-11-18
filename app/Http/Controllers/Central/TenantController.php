@@ -74,6 +74,7 @@ class TenantController extends Controller
                 'theme' => $tenant->resolvedTheme(),
                 'form_schema' => $tenant->resolvedFormSchema(),
                 'stats' => $tenant->pqrsStats(),
+                'admins' => $tenant->companyAdmins(),
             ],
             'plans' => Tenant::PLANS,
             'layouts' => TenantDefaults::LAYOUTS,

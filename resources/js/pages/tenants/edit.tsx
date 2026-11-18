@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { StatCard } from '@/components/pqrs/stat-card';
+import { CompanyAdmins } from '@/components/tenants/company-admins';
 import { TenantStatusBadge } from '@/components/pqrs/status-badge';
 import { DangerZone } from '@/components/tenants/danger-zone';
 import { FormBuilder } from '@/components/tenants/form-builder';
@@ -23,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import tenants from '@/routes/tenants';
 import type {
+    CompanyAdmin,
     FormSchema,
     PqrsStats,
     TenantSummary,
@@ -34,6 +36,7 @@ type Props = {
         theme: TenantTheme;
         form_schema: FormSchema;
         stats: PqrsStats;
+        admins: CompanyAdmin[];
     };
     plans: string[];
     fonts: FontOption[];
@@ -174,6 +177,10 @@ export default function EditTenant({ tenant, plans, fonts }: Props) {
                 {tab === 'general' && (
                     <div className="max-w-4xl space-y-6">
                         <GeneralForm tenant={tenant} plans={plans} />
+                        <CompanyAdmins
+                            tenantId={tenant.id}
+                            admins={tenant.admins}
+                        />
                         <DangerZone tenant={tenant} />
                     </div>
                 )}

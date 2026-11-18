@@ -64,6 +64,14 @@ export type SharedTenant = {
 
 export type TenantStatus = 'active' | 'suspended';
 
+/** Administrador de una empresa (usuario de la base de la empresa). */
+export type CompanyAdmin = {
+    id: number;
+    name: string;
+    email: string;
+    is_active: boolean;
+};
+
 export type TenantSummary = {
     id: string;
     name: string;
