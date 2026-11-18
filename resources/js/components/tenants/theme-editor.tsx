@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { readableTextColor } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { PortalLayoutVariant, TenantTheme } from '@/types';
 
@@ -46,6 +47,12 @@ const LAYOUTS: {
         label: 'Minimalista',
         description: 'Columna centrada, limpia y con mucho aire.',
     },
+    {
+        value: 'salud',
+        label: 'Salud',
+        description:
+            'Encabezado negro, barra de consulta y tipos con su definición.',
+    },
 ];
 
 const PRESETS = [
@@ -75,6 +82,8 @@ export function ThemeEditor({
         layout: theme.layout,
         primary_color: theme.primary_color,
         accent_color: theme.accent_color,
+        panel_color: theme.panel_color,
+        panel_accent: theme.panel_accent,
         font: theme.font,
         hero_title: theme.hero_title,
         hero_subtitle: theme.hero_subtitle ?? '',
@@ -141,7 +150,7 @@ export function ThemeEditor({
                             Estructura visual del portal público.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="grid gap-3 sm:grid-cols-3">
+                    <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {LAYOUTS.map((l) => (
                             <button
                                 key={l.value}
@@ -290,6 +299,50 @@ export function ThemeEditor({
                                 ))}
                             </div>
                         </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Panel administrativo</CardTitle>
+                        <CardDescription>
+                            Colores del panel donde el personal de la empresa
+                            gestiona sus PQRS.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-5 sm:grid-cols-[1fr_1fr_auto]">
+                        <ColorField
+                            label="Menú lateral"
+                            value={form.data.panel_color}
+                            onChange={(v) => form.setData('panel_color', v)}
+                            error={form.errors.panel_color}
+                            presets={[
+                                '#5b1a24',
+                                '#0f172a',
+                                '#1e3a8a',
+                                '#064e3b',
+                                '#3b0764',
+                                '#e2e8f0',
+                            ]}
+                        />
+                        <ColorField
+                            label="Botones y resaltados"
+                            value={form.data.panel_accent}
+                            onChange={(v) => form.setData('panel_accent', v)}
+                            error={form.errors.panel_accent}
+                            presets={[
+                                '#c62833',
+                                '#1d4ed8',
+                                '#0e7c66',
+                                '#c2410c',
+                                '#7c3aed',
+                                '#111827',
+                            ]}
+                        />
+                        <PanelThumb
+                            color={form.data.panel_color}
+                            accent={form.data.panel_accent}
+                        />
                     </CardContent>
                 </Card>
 
@@ -532,6 +585,27 @@ function LayoutThumb({
                     </div>
                 </div>
             )}
+            {variant === 'salud' && (
+                <div className="flex h-full flex-col bg-white">
+                    <div
+                        className="h-7 border-b-2 bg-black"
+                        style={{ borderColor: color }}
+                    />
+                    <div
+                        className="mx-2 -mt-1.5 h-2.5 rounded-sm"
+                        style={{ backgroundColor: color }}
+                    />
+                    <div className="mx-2 mt-1.5 flex-1 space-y-1">
+                        <div className="h-1 w-1/2 rounded bg-zinc-300" />
+                        <div className="h-1 w-2/3 rounded bg-zinc-200" />
+                        <div className="h-1 w-1/2 rounded bg-zinc-200" />
+                    </div>
+                    <div
+                        className="h-2 border-t bg-black"
+                        style={{ borderColor: color }}
+                    />
+                </div>
+            )}
             {variant === 'minimal' && (
                 <div
                     className="flex h-full flex-col items-center border-t-2 bg-white p-1.5"
@@ -545,6 +619,52 @@ function LayoutThumb({
                     <div className="mt-1.5 w-2/3 flex-1 rounded-sm border" />
                 </div>
             )}
+        </div>
+    );
+}
+
+/**
+ * Miniatura del panel administrativo con los colores elegidos.
+ */
+function PanelThumb({ color, accent }: { color: string; accent: string }) {
+    const fg = readableTextColor(color);
+    const accentFg = readableTextColor(accent);
+
+    return (
+        <div className="flex h-28 w-40 gap-1.5 self-end rounded-lg border bg-zinc-50 p-1.5">
+            <div
+                className="flex w-12 flex-col gap-1 rounded-md p-1.5"
+                style={{ backgroundColor: color }}
+            >
+                <div
+                    className="h-1.5 rounded-full opacity-60"
+                    style={{ backgroundColor: fg }}
+                />
+                <div
+                    className="h-2.5 rounded"
+                    style={{ backgroundColor: fg }}
+                />
+                <div
+                    className="h-1.5 rounded-full opacity-40"
+                    style={{ backgroundColor: fg }}
+                />
+                <div
+                    className="h-1.5 rounded-full opacity-40"
+                    style={{ backgroundColor: fg }}
+                />
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5">
+                <div className="h-3 rounded bg-white shadow-xs" />
+                <div className="flex justify-end">
+                    <span
+                        className="rounded px-1.5 text-[9px] leading-4 font-bold"
+                        style={{ backgroundColor: accent, color: accentFg }}
+                    >
+                        + Nuevo
+                    </span>
+                </div>
+                <div className="flex-1 rounded bg-white shadow-xs" />
+            </div>
         </div>
     );
 }

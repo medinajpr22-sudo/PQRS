@@ -652,3 +652,109 @@ test('company admins cannot use the super admin endpoint', function () {
         ->put('http://'.$tenant->primaryDomain()."/empresas/chi/administradores/{$admin->id}", ['name' => 'X', 'email' => 'x@chi.test'])
         ->assertNotFound();
 });
+
+/*
+|--------------------------------------------------------------------------
+| Plantilla «Salud» y reclamos por nivel de riesgo (Supersalud)
+|--------------------------------------------------------------------------
+*/
+
+test('the super admin can choose the salud portal template', function () {
+    $superAdmin = User::factory()->create();
+    $tenant = makeCompany('psi');
+
+    $this->actingAs($superAdmin)->post(route('tenants.theme.update', $tenant), [
+        'layout' => 'salud',
+        'primary_color' => '#f26b1d',
+        'accent_color' => '#000000',
+        'font' => 'circe-rounded',
+        'hero_title' => 'PQRS-F',
+    ])->assertSessionHasNoErrors();
+
+    expect(Tenant::find('psi')->resolvedTheme()['layout'])->toBe('salud');
+});
+
+test('reclamos ask for a risk level only when the company enables it', function () {
+    Notification::fake();
+
+    // Sin la opción, el reclamo no pide nivel de riesgo.
+    $sin = makeCompany('omega');
+    $this->post(portal($sin, 'radicar'), validSubmission(['type' => 'reclamo']))->assertSessionHasNoErrors();
+    expect($sin->run(fn () => Pqrs::sole()->risk_level))->toBeNull();
+
+    // Con la opción: obligatorio en reclamos, válido y se guarda.
+    $con = makeCompany('alfa', ['risk_levels' => true]);
+    $this->get(portal($con, '/'))->assertInertia(fn ($page) => $page->has('riskLevels', 3));
+    $this->get(portal($con, 'radicar?tipo=reclamo&riesgo=vital'))
+        ->assertInertia(fn ($page) => $page->has('riskLevels', 3)->where('initialRisk', 'vital'));
+
+    $this->post(portal($con, 'radicar'), validSubmission(['type' => 'reclamo']))->assertSessionHasErrors('risk_level');
+    $this->post(portal($con, 'radicar'), validSubmission(['type' => 'reclamo', 'risk_level' => 'grave']))->assertSessionHasErrors('risk_level');
+    $this->post(portal($con, 'radicar'), validSubmission(['type' => 'reclamo', 'risk_level' => 'simple', 'subject' => 'Reclamo simple']));
+    $this->post(portal($con, 'radicar'), validSubmission(['type' => 'reclamo', 'risk_level' => 'vital', 'subject' => 'Reclamo vital']));
+
+    // En otros tipos no se pide y no se guarda.
+    $this->post(portal($con, 'radicar'), validSubmission(['type' => 'peticion', 'risk_level' => 'vital']))->assertSessionHasNoErrors();
+
+    expect($con->run(fn () => Pqrs::orderBy('id')->get()->map(fn (Pqrs $p) => $p->risk_level?->value)->all()))
+        ->toBe(['simple', 'vital', null]);
+
+    // El resumen muestra primero el riesgo vital.
+    $admin = $con->run(fn () => User::first());
+    $this->actingAs($admin)->get(portal($con, 'admin'))
+        ->assertInertia(fn ($page) => $page->where('urgent.0.risk_level', 'vital'));
+});
+
+test('the tracking form arrives with the radicado from the home bar', function () {
+    $tenant = makeCompany('beta');
+
+    $this->get(portal($tenant, 'consultar?radicado=bet-2026-00001'))
+        ->assertInertia(fn ($page) => $page->component('tenant/portal/track')->where('radicado', 'BET-2026-00001'));
+});
+
+test('each company can have its own admin panel colors', function () {
+    $superAdmin = User::factory()->create();
+    $tenant = makeCompany('kappa');
+    $theme = [
+        'layout' => 'corporate',
+        'primary_color' => '#1d4ed8',
+        'accent_color' => '#f59e0b',
+        'font' => 'circe-rounded',
+        'hero_title' => 'PQRS',
+    ];
+
+    // Por defecto, el vino y rojo de la plataforma.
+    expect($tenant->resolvedTheme())->toMatchArray(['panel_color' => '#5b1a24', 'panel_accent' => '#c62833']);
+
+    $this->actingAs($superAdmin)
+        ->post(route('tenants.theme.update', $tenant), [...$theme, 'panel_color' => 'negro', 'panel_accent' => '#f26b1d'])
+        ->assertSessionHasErrors('panel_color');
+
+    $this->actingAs($superAdmin)
+        ->post(route('tenants.theme.update', $tenant), [...$theme, 'panel_color' => '#111111', 'panel_accent' => '#f26b1d'])
+        ->assertSessionHasNoErrors();
+
+    expect(Tenant::find('kappa')->resolvedTheme())->toMatchArray(['panel_color' => '#111111', 'panel_accent' => '#f26b1d']);
+
+    // En el panel central, editar una empresa no lo convierte en panel de empresa.
+    $this->actingAs($superAdmin)->get(route('tenants.edit', $tenant))
+        ->assertInertia(fn ($page) => $page->where('context', 'central'));
+
+    // El panel de la empresa recibe sus colores y sabe que está «dentro» de una empresa.
+    $admin = $tenant->run(fn () => User::first());
+    $this->actingAs($admin)->get(portal($tenant, 'admin'))
+        ->assertInertia(fn ($page) => $page
+            ->where('context', 'tenant')
+            ->where('tenant.theme.panel_color', '#111111')
+            ->where('myOpenPqrs', 0));
+});
+
+test('logging in records the last access shown in the users page', function () {
+    $tenant = makeCompany('lambda2');
+    $tenant->run(fn () => makeStaff('rosa'));
+
+    $this->post(portal($tenant, 'admin/login'), ['email' => 'rosa@staff.test', 'password' => 'password'])
+        ->assertRedirect(route('tenant.admin.dashboard'));
+
+    expect($tenant->run(fn () => User::where('email', 'rosa@staff.test')->value('last_login_at')))->not->toBeNull();
+});

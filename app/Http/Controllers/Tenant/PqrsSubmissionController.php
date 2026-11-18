@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\RiskLevel;
 use App\Http\Controllers\Controller;
 use App\Models\Sede;
 use App\Models\Tenant;
@@ -31,6 +32,8 @@ class PqrsSubmissionController extends Controller
                 'mimes' => config('pqrs.attachments.mimes'),
             ],
             'initialType' => $request->query('tipo'),
+            'riskLevels' => ! empty($schema['risk_levels']) ? RiskLevel::options() : [],
+            'initialRisk' => RiskLevel::tryFrom((string) $request->query('riesgo'))?->value,
             // Si la empresa tiene sedes, el ciudadano elige a cuál dirige su solicitud.
             'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),
@@ -60,6 +63,7 @@ class PqrsSubmissionController extends Controller
             'radicado' => $pqrs->radicado,
             'type' => $type['label'] ?? $pqrs->type,
             'sede' => $pqrs->sede?->name,
+            'risk' => $pqrs->risk_level?->label(),
             'subject' => $pqrs->subject,
             'email' => $pqrs->requester_email,
             'created_at' => $pqrs->created_at,

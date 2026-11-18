@@ -9,10 +9,14 @@ use App\Enums\PqrsType;
  */
 class TenantDefaults
 {
-    public const LAYOUTS = ['corporate', 'modern', 'minimal'];
+    public const LAYOUTS = ['corporate', 'modern', 'minimal', 'salud'];
 
+    /**
+     * Tipografías del portal. Circe Rounded es la institucional (se sirve
+     * desde resources/fonts, ver vite.config.ts) y es la predeterminada.
+     */
     public const FONTS = [
-        'instrument-sans' => ['label' => 'Instrument Sans', 'family' => "'Instrument Sans'", 'bunny' => null],
+        'circe-rounded' => ['label' => 'Circe Rounded (institucional)', 'family' => "'Circe Rounded'", 'bunny' => null],
         'inter' => ['label' => 'Inter', 'family' => "'Inter'", 'bunny' => 'inter:400,500,600,700'],
         'poppins' => ['label' => 'Poppins', 'family' => "'Poppins'", 'bunny' => 'poppins:400,500,600,700'],
         'montserrat' => ['label' => 'Montserrat', 'family' => "'Montserrat'", 'bunny' => 'montserrat:400,500,600,700'],
@@ -30,7 +34,10 @@ class TenantDefaults
             'layout' => 'corporate',
             'primary_color' => '#1d4ed8',
             'accent_color' => '#f59e0b',
-            'font' => 'instrument-sans',
+            // Panel administrativo de la empresa: menú lateral y botones.
+            'panel_color' => '#5b1a24',
+            'panel_accent' => '#c62833',
+            'font' => 'circe-rounded',
             'logo_path' => null,
             'hero_title' => 'Peticiones, quejas, reclamos y sugerencias',
             'hero_subtitle' => $companyName !== ''
@@ -59,6 +66,8 @@ class TenantDefaults
             'require_phone' => false,
             'allow_attachments' => true,
             'max_attachments' => 3,
+            // Reclamos en salud: el ciudadano elige el nivel de riesgo (Supersalud).
+            'risk_levels' => false,
             'privacy_policy_url' => '',
             'privacy_text' => 'Autorizo el tratamiento de mis datos personales conforme a la Ley 1581 de 2012 y la política de tratamiento de datos de la empresa.',
         ];

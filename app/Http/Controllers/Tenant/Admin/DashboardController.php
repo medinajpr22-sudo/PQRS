@@ -60,8 +60,10 @@ class DashboardController extends Controller
                 'total' => (int) ($byStatus[$s->value] ?? 0),
             ]),
             'bySede' => self::bySede($user),
+            // Primero los reclamos de riesgo vital, luego por vencimiento.
             'urgent' => $visible()->open()
                 ->with(['assignee:id,name', 'sede:id,name'])
+                ->orderByRisk()
                 ->orderBy('due_at')
                 ->limit(6)
                 ->get()

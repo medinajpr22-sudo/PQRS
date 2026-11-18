@@ -70,6 +70,36 @@ export function OverdueBadge({ className }: { className?: string }) {
     );
 }
 
+/**
+ * Nivel de riesgo de un reclamo en salud. El riesgo vital se resalta.
+ */
+export function RiskBadge({
+    level,
+    label,
+    className,
+}: {
+    level: 'simple' | 'priorizado' | 'vital';
+    label: string;
+    className?: string;
+}) {
+    return (
+        <span
+            className={cn(
+                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
+                level === 'vital' &&
+                    'border-red-600 bg-red-600 text-white dark:border-red-500 dark:bg-red-600',
+                level === 'priorizado' &&
+                    'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300',
+                level === 'simple' &&
+                    'border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300',
+                className,
+            )}
+        >
+            {label}
+        </span>
+    );
+}
+
 export function TenantStatusBadge({
     status,
 }: {

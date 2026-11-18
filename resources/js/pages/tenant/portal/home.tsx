@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowRight,
     BellRing,
@@ -7,14 +7,33 @@ import {
     Search,
     ShieldCheck,
 } from 'lucide-react';
-import type { PqrsTypeConfig } from '@/types';
+import { SaludHome } from '@/components/portal/salud-home';
+import type { PqrsTypeConfig, RiskLevelOption } from '@/types';
 
 type Props = {
     types: PqrsTypeConfig[];
     privacyPolicyUrl: string;
+    riskLevels: RiskLevelOption[];
 };
 
-export default function PortalHome({ types, privacyPolicyUrl }: Props) {
+export default function PortalHome({
+    types,
+    privacyPolicyUrl,
+    riskLevels,
+}: Props) {
+    const { tenant } = usePage().props;
+
+    // La plantilla «Salud» tiene su propio inicio (barra de consulta y tipos
+    // con su definición).
+    if (tenant?.theme.layout === 'salud') {
+        return (
+            <>
+                <Head title="Inicio" />
+                <SaludHome types={types} riskLevels={riskLevels} />
+            </>
+        );
+    }
+
     return (
         <>
             <Head title="Inicio" />

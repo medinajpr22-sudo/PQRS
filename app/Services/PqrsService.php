@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PqrsStatus;
+use App\Enums\PqrsType;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\Sede;
@@ -46,11 +47,15 @@ class PqrsService
         ])->values()->all();
 
         /** @var Pqrs $pqrs */
-        $pqrs = $this->transactionWithFiles(function (array &$stored) use ($tenant, $data, $type, $extra, $ip, $files) {
+        $pqrs = $this->transactionWithFiles(function (array &$stored) use ($tenant, $schema, $data, $type, $extra, $ip, $files) {
             $pqrs = Pqrs::create([
                 'radicado' => $this->nextRadicado($tenant),
                 'type' => $data['type'],
                 'sede_id' => $data['sede_id'] ?? null,
+                // Solo los reclamos llevan nivel de riesgo.
+                'risk_level' => $data['type'] === PqrsType::Reclamo->value && ! empty($schema['risk_levels'])
+                    ? ($data['risk_level'] ?? null)
+                    : null,
                 'status' => PqrsStatus::Radicada,
                 'channel' => 'web',
                 'requester_name' => $data['requester_name'],

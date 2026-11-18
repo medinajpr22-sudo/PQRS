@@ -14,6 +14,10 @@ declare module '@inertiajs/core' {
             auth: Auth;
             sidebarOpen: boolean;
             tenant: SharedTenant | null;
+            /** Panel central o el de una empresa. */
+            context: 'central' | 'tenant';
+            /** PQRS abiertas asignadas al usuario (solo en el panel de una empresa). */
+            myOpenPqrs: number | null;
             [key: string]: unknown;
         };
     }

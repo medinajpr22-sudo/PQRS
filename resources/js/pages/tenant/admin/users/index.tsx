@@ -1,11 +1,11 @@
 import { Form, Head } from '@inertiajs/react';
-import { Pencil, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { Check, MapPin, Pencil, Search, UserPlus } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import UserController from '@/actions/App/Http/Controllers/Tenant/Admin/UserController';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
+import { FilterPills } from '@/components/pqrs/filter-pills';
 import { PageHeader } from '@/components/pqrs/page-header';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -19,6 +19,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Spinner } from '@/components/ui/spinner';
+import { useInitials } from '@/hooks/use-initials';
+import { formatRelative } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import admin from '@/routes/tenant/admin';
 import type { StaffUser } from '@/types';
 
@@ -35,6 +38,25 @@ type Props = {
 export default function UsersIndex({ users, roles, sedes }: Props) {
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState<StaffUser | null>(null);
+    const [search, setSearch] = useState('');
+    const [role, setRole] = useState('');
+    const [status, setStatus] = useState<string | null>(null);
+    const getInitials = useInitials();
+
+    // La lista es corta: se filtra en el navegador.
+    const visible = useMemo(() => {
+        const term = search.trim().toLowerCase();
+
+        return users.filter(
+            (u) =>
+                (term === '' ||
+                    u.name.toLowerCase().includes(term) ||
+                    u.email.toLowerCase().includes(term)) &&
+                (role === '' || u.role === role) &&
+                (status === null ||
+                    (status === 'active' ? u.is_active : !u.is_active)),
+        );
+    }, [users, search, role, status]);
 
     return (
         <>
@@ -43,75 +65,142 @@ export default function UsersIndex({ users, roles, sedes }: Props) {
             <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
                 <PageHeader
                     title="Usuarios"
-                    description="Administradores y agentes de la empresa. Cada agente solo ve las PQRS de sus sedes. Los usuarios se desactivan en lugar de borrarse, para conservar el historial."
+                    description="Gestiona quién entra al panel de PQRS, con qué rol y qué sedes atiende cada agente."
                     actions={
-                        <Button onClick={() => setCreating(true)}>
+                        <Button
+                            onClick={() => setCreating(true)}
+                            className="h-11 rounded-xl px-5 font-bold shadow-md"
+                        >
                             <UserPlus />
                             Nuevo usuario
                         </Button>
                     }
                 />
 
-                <Card className="gap-0 py-0">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                    <div className="relative lg:w-96">
+                        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Buscar por nombre o correo"
+                            aria-label="Buscar usuarios"
+                            className="h-11 rounded-xl bg-card pl-9"
+                        />
+                    </div>
+                    <NativeSelect
+                        aria-label="Rol"
+                        value={role}
+                        onChange={(e) => setRole(e.target.value)}
+                        className="h-11 rounded-xl bg-card lg:w-60"
+                    >
+                        <option value="">Todos los roles</option>
+                        {roles.map((r) => (
+                            <option key={r.value} value={r.value}>
+                                {r.label}
+                            </option>
+                        ))}
+                    </NativeSelect>
+                    <FilterPills
+                        label="Estado"
+                        options={[
+                            { value: null, label: 'Todos' },
+                            { value: 'active', label: 'Activos' },
+                            { value: 'inactive', label: 'Inactivos' },
+                        ]}
+                        value={status}
+                        onChange={setStatus}
+                    />
+                </div>
+
+                <Card className="gap-0 overflow-hidden rounded-2xl py-0">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
+                            <thead className="border-b text-left text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
                                 <tr>
-                                    <th className="px-4 py-3 font-medium">
-                                        Nombre
+                                    <th className="px-5 py-4 font-bold">
+                                        Usuario
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        Rol
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="px-5 py-4 font-bold">Rol</th>
+                                    <th className="px-5 py-4 font-bold">
                                         Sedes
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="px-5 py-4 font-bold">
+                                        PQRS abiertas
+                                    </th>
+                                    <th className="px-5 py-4 font-bold">
                                         Estado
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        PQRS abiertas asignadas
+                                    <th className="px-5 py-4 font-bold">
+                                        Último acceso
                                     </th>
-                                    <th className="px-4 py-3" />
+                                    <th className="px-5 py-4" />
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {users.map((u) => (
-                                    <tr key={u.id}>
-                                        <td className="px-4 py-3">
-                                            <p className="font-medium">
-                                                {u.name}
-                                                {u.is_me && (
-                                                    <span className="text-muted-foreground">
-                                                        {' '}
-                                                        (tú)
-                                                    </span>
-                                                )}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {u.email}
-                                            </p>
+                                {visible.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={7}
+                                            className="px-5 py-12 text-center text-muted-foreground"
+                                        >
+                                            Ningún usuario coincide con los
+                                            filtros.
                                         </td>
-                                        <td className="px-4 py-3">
-                                            <Badge
-                                                variant={
+                                    </tr>
+                                )}
+                                {visible.map((u) => (
+                                    <tr key={u.id}>
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-(--panel) text-xs font-bold text-(--panel-fg)">
+                                                    {getInitials(u.name)}
+                                                </span>
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-bold">
+                                                        {u.name}
+                                                        {u.is_me && (
+                                                            <span className="font-medium text-muted-foreground">
+                                                                {' '}
+                                                                (tú)
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="truncate text-muted-foreground">
+                                                        {u.email}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <span
+                                                className={cn(
+                                                    'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-bold whitespace-nowrap',
                                                     u.role === 'admin'
-                                                        ? 'default'
-                                                        : 'secondary'
-                                                }
+                                                        ? 'border-(--panel-accent) text-(--panel-accent)'
+                                                        : 'border-foreground/40',
+                                                )}
                                             >
                                                 {u.role_label}
-                                            </Badge>
+                                            </span>
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-5 py-4">
                                             {u.role === 'admin' ? (
                                                 <span className="text-muted-foreground">
                                                     Todas
                                                 </span>
                                             ) : u.sedes.length > 0 ? (
-                                                u.sedes
-                                                    .map((s) => s.name)
-                                                    .join(', ')
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {u.sedes.map((s) => (
+                                                        <span
+                                                            key={s.id}
+                                                            className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                                        >
+                                                            <MapPin className="size-3" />
+                                                            {s.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             ) : (
                                                 <span className="text-xs text-amber-600">
                                                     Sin sedes: no ve ninguna
@@ -119,16 +208,7 @@ export default function UsersIndex({ users, roles, sedes }: Props) {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3">
-                                            {u.is_active ? (
-                                                'Activo'
-                                            ) : (
-                                                <span className="text-muted-foreground">
-                                                    Inactivo
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 tabular-nums">
+                                        <td className="px-5 py-4 tabular-nums">
                                             {u.open_assigned}
                                             {!u.is_active &&
                                                 u.open_assigned > 0 && (
@@ -137,10 +217,26 @@ export default function UsersIndex({ users, roles, sedes }: Props) {
                                                     </span>
                                                 )}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className="px-5 py-4">
+                                            {u.is_active ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-600/60 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                                                    <Check className="size-3" />
+                                                    Activo
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex rounded-full border px-2.5 py-0.5 text-xs font-bold text-muted-foreground">
+                                                    Inactivo
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-5 py-4 whitespace-nowrap text-muted-foreground">
+                                            {formatRelative(u.last_login_at)}
+                                        </td>
+                                        <td className="px-5 py-4 text-right">
                                             <Button
-                                                variant="ghost"
+                                                variant="outline"
                                                 size="sm"
+                                                className="h-9 rounded-lg font-bold"
                                                 onClick={() => setEditing(u)}
                                             >
                                                 <Pencil />

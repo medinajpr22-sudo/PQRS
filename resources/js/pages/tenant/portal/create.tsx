@@ -13,7 +13,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { formatFileSize } from '@/lib/format';
-import type { FormSchema, Option } from '@/types';
+import type { FormSchema, Option, RiskLevelOption } from '@/types';
 
 type Props = {
     schema: FormSchema;
@@ -21,6 +21,8 @@ type Props = {
     attachmentRules: { max_kb: number; mimes: string[] };
     initialType: string | null;
     sedes: { value: number; label: string }[];
+    riskLevels: RiskLevelOption[];
+    initialRisk: string | null;
 };
 
 export default function CreatePqrs({
@@ -29,12 +31,16 @@ export default function CreatePqrs({
     attachmentRules,
     initialType,
     sedes,
+    riskLevels,
+    initialRisk,
 }: Props) {
     const [files, setFiles] = useState<File[]>([]);
     const fileInput = useRef<HTMLInputElement>(null);
     const defaultType =
         schema.types.find((t) => t.key === initialType)?.key ??
         (schema.types.length === 1 ? schema.types[0].key : undefined);
+    const [selectedType, setSelectedType] = useState(defaultType);
+    const asksRisk = riskLevels.length > 0 && selectedType === 'reclamo';
 
     const syncFiles = (next: File[]) => {
         setFiles(next);
@@ -100,6 +106,9 @@ export default function CreatePqrs({
                                             defaultChecked={
                                                 type.key === defaultType
                                             }
+                                            onChange={() =>
+                                                setSelectedType(type.key)
+                                            }
                                             required
                                             className="mt-1 accent-(--brand)"
                                         />
@@ -122,6 +131,53 @@ export default function CreatePqrs({
                                 message={errors.type}
                                 className="mt-2"
                             />
+                            {asksRisk && (
+                                <fieldset className="mt-6">
+                                    <legend className="font-bold">
+                                        Nivel de riesgo del reclamo
+                                    </legend>
+                                    <p className="text-sm text-zinc-500">
+                                        Si su caso es de riesgo vital, elija ese
+                                        nivel para que sea atendido con
+                                        prioridad.
+                                    </p>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                        {riskLevels.map((level) => (
+                                            <label
+                                                key={level.value}
+                                                className="flex cursor-pointer gap-3 rounded-xl border border-zinc-200 p-4 transition-colors hover:bg-zinc-50 has-checked:border-(--brand) has-checked:bg-(--brand-soft) has-checked:ring-1 has-checked:ring-(--brand)"
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="risk_level"
+                                                    value={level.value}
+                                                    defaultChecked={
+                                                        level.value ===
+                                                        initialRisk
+                                                    }
+                                                    required
+                                                    className="mt-1 accent-(--brand)"
+                                                />
+                                                <span>
+                                                    <span className="block text-sm font-bold">
+                                                        {level.label}
+                                                    </span>
+                                                    <span className="block text-sm font-medium">
+                                                        {level.title}
+                                                    </span>
+                                                    <span className="mt-1 block text-xs text-zinc-500">
+                                                        {level.description}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <InputError
+                                        message={errors.risk_level}
+                                        className="mt-2"
+                                    />
+                                </fieldset>
+                            )}
                             {sedes.length > 0 && (
                                 <div className="mt-5 grid gap-2 sm:max-w-sm">
                                     <Label htmlFor="sede_id">

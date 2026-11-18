@@ -4,19 +4,39 @@ import babel from '@rolldown/plugin-babel';
 import tailwindcss from '@tailwindcss/vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
-import { bunny } from 'laravel-vite-plugin/fonts';
+import { existsSync } from 'node:fs';
+import { local } from 'laravel-vite-plugin/fonts';
 import { defineConfig, lazyPlugins } from 'vite-plus';
+
+// Circe Rounded tiene licencia comercial y no se guarda en git: hay que
+// copiar los .otf en resources/fonts (ver resources/fonts/LEEME.md). Sin
+// ellos el proyecto compila igual y usa la fuente del sistema.
+const circeFonts = {
+    medium: 'resources/fonts/CirceRounded-Medium.otf',
+    bold: 'resources/fonts/CirceRounded-Bold.otf',
+};
+const hasCirce = existsSync(circeFonts.medium) && existsSync(circeFonts.bold);
 
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],
             refresh: true,
-            fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
-                }),
-            ],
+            // Tipografía institucional: Circe Rounded Medium para los textos
+            // y Bold para los títulos. Solo hay dos archivos, así que los
+            // pesos normales usan Medium y los gruesos usan Bold.
+            fonts: hasCirce
+                ? [
+                      local('Circe Rounded', {
+                          variants: [
+                              { src: circeFonts.medium, weight: 400 },
+                              { src: circeFonts.medium, weight: 500 },
+                              { src: circeFonts.bold, weight: 600 },
+                              { src: circeFonts.bold, weight: 700 },
+                          ],
+                      }),
+                  ]
+                : [],
         }),
         inertia(),
         react(),

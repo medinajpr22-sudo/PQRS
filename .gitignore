@@ -46,3 +46,6 @@ yarn-error.log
 /database/tenant_*
 # Adjuntos privados de cada empresa (FilesystemTenancyBootstrapper)
 /storage/tenant*
+# Circe Rounded tiene licencia comercial: no se sube al repositorio
+/resources/fonts/*
+!/resources/fonts/LEEME.md

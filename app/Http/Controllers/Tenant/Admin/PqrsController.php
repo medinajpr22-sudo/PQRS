@@ -71,6 +71,12 @@ class PqrsController extends Controller
             'types' => $types->map(fn ($t) => ['value' => $t['key'], 'label' => $t['label']])->values(),
             'staff' => self::staffOptions(),
             'sedes' => self::sedeFilterOptions($user),
+            // Para las píldoras «Todas · Mis PQRS · Sin responsable».
+            'counts' => [
+                'all' => Pqrs::visibleTo($user)->count(),
+                'mine' => Pqrs::visibleTo($user)->where('assigned_to', $user->id)->count(),
+                'none' => Pqrs::visibleTo($user)->whereNull('assigned_to')->count(),
+            ],
         ]);
     }
 
@@ -268,6 +274,8 @@ class PqrsController extends Controller
             'is_overdue' => $pqrs->isOverdue(),
             'assignee' => $pqrs->assignee?->only(['id', 'name']),
             'sede' => $pqrs->sede?->only(['id', 'name']),
+            'risk_level' => $pqrs->risk_level?->value,
+            'risk_label' => $pqrs->risk_level?->label(),
         ];
     }
 

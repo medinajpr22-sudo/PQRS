@@ -20,7 +20,11 @@ import PqrsActivityController from '@/actions/App/Http/Controllers/Tenant/Admin/
 import PqrsController from '@/actions/App/Http/Controllers/Tenant/Admin/PqrsController';
 import InputError from '@/components/input-error';
 import { DueDate } from '@/components/pqrs/due-date';
-import { OverdueBadge, StatusBadge } from '@/components/pqrs/status-badge';
+import {
+    OverdueBadge,
+    RiskBadge,
+    StatusBadge,
+} from '@/components/pqrs/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -205,6 +209,12 @@ export default function PqrsShow({
                                 label={pqrs.status_label}
                             />
                             {pqrs.is_overdue && <OverdueBadge />}
+                            {pqrs.risk_level && (
+                                <RiskBadge
+                                    level={pqrs.risk_level}
+                                    label={pqrs.risk_label ?? ''}
+                                />
+                            )}
                         </div>
                         <p className="text-muted-foreground">
                             {pqrs.type_label} · {pqrs.subject}

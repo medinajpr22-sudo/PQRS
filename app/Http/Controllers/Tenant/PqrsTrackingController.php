@@ -21,9 +21,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PqrsTrackingController extends Controller
 {
-    public function create(): Response
+    public function create(Request $request): Response
     {
-        return Inertia::render('tenant/portal/track');
+        // La barra «Hacer seguimiento» del inicio trae el radicado ya escrito;
+        // el correo se pide aquí para que nadie consulte solicitudes ajenas.
+        return Inertia::render('tenant/portal/track', [
+            'radicado' => Str::upper(trim((string) $request->query('radicado'))) ?: null,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -65,6 +69,7 @@ class PqrsTrackingController extends Controller
                 'radicado' => $pqrs->radicado,
                 'type' => $type['label'] ?? $pqrs->type,
                 'sede' => $pqrs->sede?->name,
+                'risk' => $pqrs->risk_level?->label(),
                 'status' => $pqrs->status->value,
                 'status_label' => $pqrs->status->label(),
                 'subject' => $pqrs->subject,

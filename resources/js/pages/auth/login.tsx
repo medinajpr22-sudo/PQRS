@@ -83,13 +83,13 @@ export default function Login({ status, canResetPassword }: Props) {
 
                             <Button
                                 type="submit"
-                                className="mt-4 w-full"
+                                className="mt-2 h-11 w-full rounded-xl text-base font-bold shadow-md"
                                 tabIndex={4}
                                 disabled={processing}
                                 data-test="login-button"
                             >
                                 {processing && <Spinner />}
-                                Iniciar sesión
+                                Entrar
                             </Button>
                         </div>
                     </>
@@ -106,6 +106,6 @@ export default function Login({ status, canResetPassword }: Props) {
 }
 
 Login.layout = {
-    title: 'Panel de administración PQRS',
-    description: 'Ingresa con tu cuenta de administrador de la plataforma',
+    title: 'Administración PQRS',
+    description: 'Inicia sesión para continuar',
 };

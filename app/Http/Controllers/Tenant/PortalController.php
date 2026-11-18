@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\RiskLevel;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
 use Inertia\Inertia;
@@ -21,6 +22,8 @@ class PortalController extends Controller
         return Inertia::render('tenant/portal/home', [
             'types' => collect($schema['types'])->where('enabled', true)->values(),
             'privacyPolicyUrl' => $schema['privacy_policy_url'],
+            // Niveles de riesgo de los reclamos, si la empresa los usa.
+            'riskLevels' => ! empty($schema['risk_levels']) ? RiskLevel::options() : [],
         ]);
     }
 }

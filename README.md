@@ -16,8 +16,10 @@ Construida con Laravel 13, Inertia + React, Tailwind y [stancl/tenancy](https://
 
 - **Dashboard** con PQRS consolidadas de todas las empresas (abiertas, vencidas, por mes y por tipo).
 - **Empresas**: crear (el super administrador define el **nombre de su base de datos** y se crea su usuario «Administrador de empresa»), suspender, eliminar.
-- **Diseño del portal** por empresa: plantilla (corporativo, moderno, minimalista), colores, logo, tipografía y textos, con vista previa en vivo.
+- **Diseño del portal** por empresa: plantilla (corporativo, moderno, minimalista o **salud**), colores, logo, tipografía (Circe Rounded es la institucional) y textos, con vista previa en vivo. Todos los portales llevan el sello «Vigilado Supersalud» en el pie.
+- **Colores del panel administrativo** por empresa (menú lateral y botones). El panel central usa el vino y rojo de la plataforma.
 - **Formulario PQRS** por empresa: tipos habilitados, nombre y plazo (días hábiles) de cada tipo, datos obligatorios, adjuntos y campos personalizados (texto, lista, opción única, fecha, casilla, etc.).
+- **Reclamos por nivel de riesgo** (opcional, Supersalud): el ciudadano elige riesgo simple, priorizado o vital; los de riesgo vital salen primero en el resumen de la empresa.
 
 ### Portal público de cada empresa
 
@@ -74,6 +76,8 @@ php artisan queue:work   # en otra terminal: envía los correos (van por cola)
 ```
 
 > Requiere **PHP 8.4** (Laravel 13 y Pest 5 lo exigen).
+
+> La tipografía **Circe Rounded** tiene licencia comercial y no está en el repositorio: copia `CirceRounded-Medium.otf` y `CirceRounded-Bold.otf` en `resources/fonts/` antes de compilar (ver `resources/fonts/LEEME.md`). Sin ellas el proyecto funciona con la fuente del sistema.
 
 Si ya tenías empresas creadas, después de actualizar ejecuta `php artisan tenants:migrate` para agregar a sus bases de datos lo nuevo (contador de radicados, roles, sedes). Los antiguos «funcionarios» pasan a ser «agentes» sin sedes: asígnaselas en Usuarios.
 

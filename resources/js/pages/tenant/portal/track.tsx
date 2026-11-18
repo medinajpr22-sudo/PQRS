@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 
-export default function Track() {
+export default function Track({ radicado }: { radicado: string | null }) {
     return (
         <>
             <Head title="Consultar estado" />
@@ -32,7 +32,8 @@ export default function Track() {
                                     id="radicado"
                                     name="radicado"
                                     required
-                                    autoFocus
+                                    autoFocus={!radicado}
+                                    defaultValue={radicado ?? undefined}
                                     placeholder="Ej: ABC-2026-00001"
                                     className="font-mono uppercase"
                                     aria-invalid={!!errors.radicado}
@@ -48,6 +49,7 @@ export default function Track() {
                                     name="email"
                                     type="email"
                                     required
+                                    autoFocus={!!radicado}
                                     autoComplete="email"
                                     aria-invalid={!!errors.email}
                                 />

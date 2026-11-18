@@ -1,27 +1,27 @@
 import { Link } from '@inertiajs/react';
 import { Building2, LayoutGrid, PlusCircle } from 'lucide-react';
-import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
-import { NavUser } from '@/components/nav-user';
+import { PanelBrand } from '@/components/panel/panel-brand';
+import { PanelSidebarUser } from '@/components/panel/panel-user';
 import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
     SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import tenants from '@/routes/tenants';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const generalItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
     },
+];
+
+const companyItems: NavItem[] = [
     {
         title: 'Empresas',
         href: tenants.index(),
@@ -36,25 +36,27 @@ const mainNavItems: NavItem[] = [
 
 export function AppSidebar() {
     return (
-        <Sidebar collapsible="icon" variant="inset">
-            <SidebarHeader>
-                <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboard()} prefetch>
-                                <AppLogo />
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                </SidebarMenu>
+        <Sidebar collapsible="icon" variant="floating">
+            <SidebarHeader className="p-3">
+                <Link href={dashboard()} prefetch>
+                    <PanelBrand
+                        name="Portal PQRS"
+                        tag="Administración"
+                        className="group-data-[collapsible=icon]:hidden"
+                    />
+                    <span className="hidden size-8 items-center justify-center rounded-lg bg-black/25 text-sm font-bold text-(--panel-fg) group-data-[collapsible=icon]:flex">
+                        P
+                    </span>
+                </Link>
             </SidebarHeader>
 
-            <SidebarContent>
-                <NavMain items={mainNavItems} />
+            <SidebarContent className="gap-2 pt-2">
+                <NavMain items={generalItems} label="General" />
+                <NavMain items={companyItems} label="Empresas" />
             </SidebarContent>
 
-            <SidebarFooter>
-                <NavUser />
+            <SidebarFooter className="p-3">
+                <PanelSidebarUser />
             </SidebarFooter>
         </Sidebar>
     );

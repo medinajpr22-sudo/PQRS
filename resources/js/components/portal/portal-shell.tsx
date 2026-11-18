@@ -164,7 +164,27 @@ function FooterContent({
                     </a>
                 )}
             </div>
+            <VigiladoSupersalud />
         </div>
+    );
+}
+
+/**
+ * Sello «Vigilado Supersalud», igual en el pie de todas las empresas. Va
+ * sobre fondo blanco para que se lea en cualquier diseño (pie oscuro o de
+ * color de marca).
+ */
+function VigiladoSupersalud() {
+    return (
+        <span className="inline-flex rounded-md bg-white px-3 py-2">
+            <img
+                src="/images/vigilado-supersalud.png"
+                alt="Vigilado Supersalud"
+                width={494}
+                height={144}
+                className="h-9 w-auto"
+            />
+        </span>
     );
 }
 
@@ -184,9 +204,106 @@ export function PortalShell(props: PortalShellProps) {
                 <ModernLayout {...props} />
             ) : theme.layout === 'minimal' ? (
                 <MinimalLayout {...props} />
+            ) : theme.layout === 'salud' ? (
+                <SaludLayout {...props} />
             ) : (
                 <CorporateLayout {...props} />
             )}
+        </div>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+/* Salud: encabezado negro con franja de marca y pie negro             */
+/* ------------------------------------------------------------------ */
+function SaludLayout({
+    tenantName,
+    theme,
+    title,
+    description,
+    active = 'home',
+    preview,
+    children,
+}: PortalShellProps) {
+    return (
+        <div className={cn('flex flex-col bg-white', screenHeight(preview))}>
+            <section className="border-b-[6px] border-(--brand) bg-black text-white">
+                <div className="mx-auto max-w-6xl px-4 sm:px-6">
+                    <div className="flex h-16 items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <span className="rounded-lg bg-white p-1">
+                                <Logo
+                                    theme={theme}
+                                    tenantName={tenantName}
+                                    className="h-8"
+                                />
+                            </span>
+                            {!theme.logo_url && (
+                                <span className="truncate font-bold">
+                                    {tenantName}
+                                </span>
+                            )}
+                        </div>
+                        <nav className="hidden items-center gap-1 md:flex">
+                            {NAV.map((item) => (
+                                <NavLink
+                                    key={item.key}
+                                    item={item}
+                                    active={active === item.key}
+                                    preview={preview}
+                                    className="rounded-full px-4 py-2 text-sm font-medium text-white/75 transition-colors hover:text-white data-active:bg-(--brand) data-active:text-(--brand-fg)"
+                                >
+                                    {item.label}
+                                </NavLink>
+                            ))}
+                        </nav>
+                    </div>
+                    <div className="pt-10 pb-24 md:pt-14">
+                        <h1 className="max-w-3xl text-4xl leading-tight font-bold md:text-5xl">
+                            {title ?? theme.hero_title}
+                        </h1>
+                        {(description ?? theme.hero_subtitle) && (
+                            <p className="mt-4 max-w-2xl text-base text-white/80 md:text-lg">
+                                {description ?? theme.hero_subtitle}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </section>
+
+            <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-10 pb-16 sm:px-6">
+                {children}
+            </main>
+
+            <nav
+                className={cn(
+                    'fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t bg-white md:hidden',
+                    preview && 'hidden',
+                )}
+            >
+                {NAV.map((item) => (
+                    <NavLink
+                        key={item.key}
+                        item={item}
+                        active={active === item.key}
+                        preview={preview}
+                        className="flex flex-col items-center gap-1 py-2 text-[11px] text-zinc-500 data-active:text-(--brand)"
+                    >
+                        <item.icon className="size-5" />
+                        {item.label}
+                    </NavLink>
+                ))}
+            </nav>
+
+            <footer className="border-t-[6px] border-(--brand) bg-black pb-16 text-zinc-200 md:pb-0">
+                <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+                    <FooterContent
+                        theme={theme}
+                        tenantName={tenantName}
+                        preview={preview}
+                    />
+                </div>
+            </footer>
         </div>
     );
 }

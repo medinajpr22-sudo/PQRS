@@ -46,6 +46,7 @@ class UserController extends Controller
                 'is_active' => $u->is_active,
                 'sedes' => $u->sedes->map(fn (Sede $s) => ['id' => $s->id, 'name' => $s->name])->values(),
                 'open_assigned' => (int) $u->getAttribute('open_assigned'),
+                'last_login_at' => $u->last_login_at,
                 'created_at' => $u->created_at,
                 'is_me' => $u->id === $request->user()->id,
             ]);

@@ -2,9 +2,14 @@ import { Head, Link, router } from '@inertiajs/react';
 import { Inbox, Search, X } from 'lucide-react';
 import { useState } from 'react';
 import { DueDate } from '@/components/pqrs/due-date';
+import { FilterPills } from '@/components/pqrs/filter-pills';
 import { PageHeader } from '@/components/pqrs/page-header';
 import { Pagination } from '@/components/pqrs/pagination';
-import { OverdueBadge, StatusBadge } from '@/components/pqrs/status-badge';
+import {
+    OverdueBadge,
+    RiskBadge,
+    StatusBadge,
+} from '@/components/pqrs/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,6 +36,7 @@ type Props = {
     types: Option[];
     staff: StaffOption[];
     sedes: Option[];
+    counts: { all: number; mine: number; none: number };
 };
 
 export default function PqrsIndex({
@@ -40,6 +46,7 @@ export default function PqrsIndex({
     types,
     staff,
     sedes,
+    counts,
 }: Props) {
     const isMine = filters.assigned === 'me';
     const [search, setSearch] = useState(filters.search);
@@ -103,6 +110,25 @@ export default function PqrsIndex({
                             ? 'Solicitudes de las que eres responsable.'
                             : 'Busca, filtra y gestiona las solicitudes radicadas.'
                     }
+                />
+
+                <FilterPills
+                    label="Responsable"
+                    options={[
+                        { value: null, label: 'Todas', count: counts.all },
+                        { value: 'me', label: 'Mis PQRS', count: counts.mine },
+                        {
+                            value: 'none',
+                            label: 'Sin responsable',
+                            count: counts.none,
+                        },
+                    ]}
+                    value={
+                        filters.assigned === 'me' || filters.assigned === 'none'
+                            ? filters.assigned
+                            : null
+                    }
+                    onChange={(assigned) => apply({ assigned })}
                 />
 
                 <Card className="gap-0 py-0">
@@ -315,6 +341,14 @@ export default function PqrsIndex({
                                                 />
                                                 {p.is_overdue && (
                                                     <OverdueBadge />
+                                                )}
+                                                {p.risk_level && (
+                                                    <RiskBadge
+                                                        level={p.risk_level}
+                                                        label={
+                                                            p.risk_label ?? ''
+                                                        }
+                                                    />
                                                 )}
                                             </div>
                                         </td>

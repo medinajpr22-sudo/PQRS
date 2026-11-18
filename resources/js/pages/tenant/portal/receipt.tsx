@@ -10,6 +10,7 @@ type Props = {
         radicado: string;
         type: string;
         sede: string | null;
+        risk: string | null;
         subject: string;
         email: string;
         created_at: string;
@@ -58,6 +59,9 @@ export default function Receipt({ receipt }: Props) {
                 <dl className="mt-8 grid gap-4 text-left text-sm sm:grid-cols-2">
                     <Item label="Tipo de solicitud" value={receipt.type} />
                     {receipt.sede && <Item label="Sede" value={receipt.sede} />}
+                    {receipt.risk && (
+                        <Item label="Nivel de riesgo" value={receipt.risk} />
+                    )}
                     <Item
                         label="Fecha de radicación"
                         value={formatDateTime(receipt.created_at)}

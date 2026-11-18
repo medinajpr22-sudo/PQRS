@@ -1,24 +1,15 @@
-import { Link, router, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import {
-    ChevronsUpDown,
     ExternalLink,
     Inbox,
     LayoutGrid,
-    LogOut,
     MapPin,
     UserCheck,
     Users,
 } from 'lucide-react';
 import { NavMain } from '@/components/nav-main';
-import { TenantAvatar } from '@/components/tenants/tenant-avatar';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { PanelBrand } from '@/components/panel/panel-brand';
+import { PanelSidebarUser } from '@/components/panel/panel-user';
 import {
     Sidebar,
     SidebarContent,
@@ -29,23 +20,23 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
-    useSidebar,
 } from '@/components/ui/sidebar';
-import { UserInfo } from '@/components/user-info';
 import { useCurrentUrl } from '@/hooks/use-current-url';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { initials } from '@/lib/format';
 import admin from '@/routes/tenant/admin';
 import type { NavItem } from '@/types';
 
+/**
+ * Menú del panel de una empresa. Los agentes ven la gestión de sus PQRS;
+ * el administrador de empresa además gestiona usuarios y sedes.
+ */
 export function TenantAdminSidebar() {
     const page = usePage();
     const { tenant, auth } = page.props;
-    const { state } = useSidebar();
-    const isMobile = useIsMobile();
     const { currentUrl } = useCurrentUrl();
     const isMine = page.url.includes('assigned=me');
 
-    const items: NavItem[] = [
+    const management: NavItem[] = [
         {
             title: 'Resumen',
             href: admin.dashboard(),
@@ -67,59 +58,55 @@ export function TenantAdminSidebar() {
     ];
 
     // Solo el administrador de empresa gestiona usuarios y sedes.
-    if (auth.user?.role === 'admin') {
-        items.push({
-            title: 'Usuarios',
-            href: admin.users.index(),
-            icon: Users,
-            isActive: currentUrl.startsWith('/admin/usuarios'),
-        });
-        items.push({
-            title: 'Sedes',
-            href: admin.sedes.index(),
-            icon: MapPin,
-            isActive: currentUrl.startsWith('/admin/sedes'),
-        });
-    }
+    const administration: NavItem[] =
+        auth.user?.role === 'admin'
+            ? [
+                  {
+                      title: 'Usuarios',
+                      href: admin.users.index(),
+                      icon: Users,
+                      isActive: currentUrl.startsWith('/admin/usuarios'),
+                  },
+                  {
+                      title: 'Sedes',
+                      href: admin.sedes.index(),
+                      icon: MapPin,
+                      isActive: currentUrl.startsWith('/admin/sedes'),
+                  },
+              ]
+            : [];
 
     return (
-        <Sidebar collapsible="icon" variant="inset">
-            <SidebarHeader>
-                <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
-                            <Link href={admin.dashboard()} prefetch>
-                                {tenant && (
-                                    <TenantAvatar
-                                        name={tenant.name}
-                                        color={tenant.theme.primary_color}
-                                        logoUrl={tenant.theme.logo_url}
-                                        className="size-8"
-                                    />
-                                )}
-                                <div className="ml-1 grid flex-1 text-left text-sm leading-tight">
-                                    <span className="truncate font-semibold">
-                                        {tenant?.name}
-                                    </span>
-                                    <span className="truncate text-xs text-muted-foreground">
-                                        Gestión de PQRS
-                                    </span>
-                                </div>
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                </SidebarMenu>
+        <Sidebar collapsible="icon" variant="floating">
+            <SidebarHeader className="p-3">
+                <Link href={admin.dashboard()} prefetch>
+                    <PanelBrand
+                        name={tenant?.name ?? ''}
+                        tag="PQRS"
+                        logoUrl={tenant?.theme.logo_url}
+                        className="group-data-[collapsible=icon]:hidden"
+                    />
+                    <span className="hidden size-8 items-center justify-center rounded-lg bg-black/25 text-xs font-bold text-(--panel-fg) group-data-[collapsible=icon]:flex">
+                        {initials(tenant?.name ?? '')}
+                    </span>
+                </Link>
             </SidebarHeader>
 
-            <SidebarContent>
-                <NavMain items={items} label="Gestión" />
-                <SidebarGroup className="px-2 py-0">
-                    <SidebarGroupLabel>Portal</SidebarGroupLabel>
+            <SidebarContent className="gap-2 pt-2">
+                <NavMain items={management} label="Gestión" />
+                {administration.length > 0 && (
+                    <NavMain items={administration} label="Administración" />
+                )}
+                <SidebarGroup className="px-2 py-1">
+                    <SidebarGroupLabel className="text-[11px] font-bold tracking-[0.16em] text-sidebar-foreground/70 uppercase">
+                        Portal
+                    </SidebarGroupLabel>
                     <SidebarMenu>
                         <SidebarMenuItem>
                             <SidebarMenuButton
                                 asChild
                                 tooltip={{ children: 'Ver portal público' }}
+                                className="h-11 rounded-xl px-3 text-[15px] font-semibold [&>svg]:size-5"
                             >
                                 <a href="/" target="_blank" rel="noreferrer">
                                     <ExternalLink />
@@ -131,56 +118,8 @@ export function TenantAdminSidebar() {
                 </SidebarGroup>
             </SidebarContent>
 
-            <SidebarFooter>
-                {auth.user && (
-                    <SidebarMenu>
-                        <SidebarMenuItem>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <SidebarMenuButton
-                                        size="lg"
-                                        className="group text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent"
-                                    >
-                                        <UserInfo user={auth.user} />
-                                        <ChevronsUpDown className="ml-auto size-4" />
-                                    </SidebarMenuButton>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                    className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-                                    align="end"
-                                    side={
-                                        isMobile
-                                            ? 'bottom'
-                                            : state === 'collapsed'
-                                              ? 'left'
-                                              : 'bottom'
-                                    }
-                                >
-                                    <DropdownMenuLabel className="p-0 font-normal">
-                                        <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                                            <UserInfo
-                                                user={auth.user}
-                                                showEmail
-                                            />
-                                        </div>
-                                    </DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem asChild>
-                                        <Link
-                                            className="block w-full cursor-pointer"
-                                            href={admin.logout()}
-                                            as="button"
-                                            onClick={() => router.flushAll()}
-                                        >
-                                            <LogOut className="mr-2" />
-                                            Cerrar sesión
-                                        </Link>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </SidebarMenuItem>
-                    </SidebarMenu>
-                )}
+            <SidebarFooter className="p-3">
+                <PanelSidebarUser />
             </SidebarFooter>
         </Sidebar>
     );

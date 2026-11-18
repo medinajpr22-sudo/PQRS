@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\PqrsType;
+use App\Enums\RiskLevel;
 use Illuminate\Validation\Rule;
 
 /**
@@ -45,6 +47,11 @@ class PqrsFormRules
             $rules['sede_id'] = ['required', 'integer', Rule::in($sedeIds)];
         }
 
+        // Reclamos en salud: nivel de riesgo obligatorio si la empresa lo usa.
+        if (! empty($schema['risk_levels'])) {
+            $rules['risk_level'] = ['nullable', 'required_if:type,'.PqrsType::Reclamo->value, Rule::enum(RiskLevel::class)];
+        }
+
         foreach ($schema['fields'] as $field) {
             $rules['fields.'.$field['key']] = self::fieldRules($field);
         }
@@ -72,6 +79,7 @@ class PqrsFormRules
         $attributes = [
             'type' => 'tipo de solicitud',
             'sede_id' => 'sede',
+            'risk_level' => 'nivel de riesgo',
             'requester_name' => 'nombre completo',
             'requester_email' => 'correo electrónico',
             'requester_phone' => 'teléfono',

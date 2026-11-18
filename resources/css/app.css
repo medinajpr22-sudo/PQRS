@@ -9,7 +9,7 @@
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Circe Rounded', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
 
@@ -61,75 +61,79 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/*
+ * Paneles administrativos (central y de cada empresa).
+ *
+ * Todo sale de cuatro variables: --panel (menú lateral), --panel-accent
+ * (botones y resaltados) y sus colores de texto. El panel central usa estos
+ * valores; el de cada empresa los reemplaza con los colores que el super
+ * administrador le asigna (ver tenant-admin-layout.tsx). Los portales
+ * públicos redefinen --primary con la marca de la empresa (brandStyle).
+ */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --panel: #5b1a24;
+    --panel-fg: #ffffff;
+    --panel-accent: #c62833;
+    --panel-accent-fg: #ffffff;
+
+    --background: oklch(0.985 0.005 15);
+    --foreground: oklch(0.21 0.02 15);
+    --card: oklch(1 0 0 / 0.82);
+    --card-foreground: oklch(0.21 0.02 15);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.21 0.02 15);
+    --primary: var(--panel-accent);
+    --primary-foreground: var(--panel-accent-fg);
+    --secondary: oklch(0.96 0.01 15);
+    --secondary-foreground: oklch(0.28 0.04 15);
+    --muted: oklch(0.965 0.008 15);
+    --muted-foreground: oklch(0.5 0.022 15);
+    --accent: oklch(0.955 0.012 15);
+    --accent-foreground: oklch(0.28 0.04 15);
     --destructive: oklch(0.577 0.245 27.325);
     --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.87 0 0);
+    --border: oklch(0.905 0.014 15);
+    --input: oklch(0.86 0.018 15);
+    --ring: var(--panel-accent);
     --chart-1: oklch(0.646 0.222 41.116);
     --chart-2: oklch(0.6 0.118 184.704);
     --chart-3: oklch(0.398 0.07 227.392);
     --chart-4: oklch(0.828 0.189 84.429);
     --chart-5: oklch(0.769 0.188 70.08);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.87 0 0);
+    --radius: 0.75rem;
+    --sidebar: var(--panel);
+    --sidebar-foreground: var(--panel-fg);
+    --sidebar-primary: var(--panel-accent);
+    --sidebar-primary-foreground: var(--panel-accent-fg);
+    /* Opción activa: «píldora» con el color de texto del menú. */
+    --sidebar-accent: var(--panel-fg);
+    --sidebar-accent-foreground: var(--panel);
+    --sidebar-border: color-mix(in oklab, var(--panel-fg) 16%, transparent);
+    --sidebar-ring: var(--panel-accent);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: oklch(0.17 0.012 15);
+    --foreground: oklch(0.965 0.005 15);
+    --card: oklch(0.215 0.016 15 / 0.85);
+    --card-foreground: oklch(0.965 0.005 15);
+    --popover: oklch(0.215 0.016 15);
+    --popover-foreground: oklch(0.965 0.005 15);
+    --secondary: oklch(0.27 0.02 15);
+    --secondary-foreground: oklch(0.965 0.005 15);
+    --muted: oklch(0.26 0.018 15);
+    --muted-foreground: oklch(0.72 0.018 15);
+    --accent: oklch(0.28 0.022 15);
+    --accent-foreground: oklch(0.965 0.005 15);
     --destructive: oklch(0.396 0.141 25.723);
     --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
+    --border: oklch(0.3 0.02 15);
+    --input: oklch(0.34 0.022 15);
     --chart-1: oklch(0.488 0.243 264.376);
     --chart-2: oklch(0.696 0.17 162.48);
     --chart-3: oklch(0.769 0.188 70.08);
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
 }
 
 @layer base {
@@ -140,15 +144,83 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    /* Títulos en Circe Rounded Bold (los textos usan Medium). */
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-weight: 700;
+    }
 }
 
-/* Color de las barras de los gráficos (una sola serie). */
+/* Color de las barras de los gráficos (una sola serie): el del panel. */
 :root {
-    --chart-bar: oklch(0.546 0.215 262.9);
-    --chart-bar-muted: oklch(0.546 0.215 262.9 / 0.35);
+    --chart-bar: var(--panel-accent);
+    --chart-bar-muted: color-mix(
+        in oklab,
+        var(--panel-accent) 35%,
+        transparent
+    );
 }
 
-.dark {
-    --chart-bar: oklch(0.707 0.165 254.6);
-    --chart-bar-muted: oklch(0.707 0.165 254.6 / 0.35);
+/*
+ * Estilo de los paneles administrativos (fuera de @layer para que prime
+ * sobre las utilidades de los componentes de shadcn).
+ */
+
+/* Fondo claro con un degradado suave del color de acento a la derecha. */
+.panel-bg {
+    background-color: var(--background);
+    background-image:
+        radial-gradient(
+            70rem 45rem at 105% -5%,
+            color-mix(in oklab, var(--panel-accent) 32%, transparent),
+            transparent 60%
+        ),
+        radial-gradient(
+            45rem 35rem at 75% 110%,
+            color-mix(in oklab, var(--panel) 18%, transparent),
+            transparent 65%
+        );
+    background-attachment: fixed;
+}
+
+.dark .panel-bg {
+    background-image:
+        radial-gradient(
+            70rem 45rem at 105% -5%,
+            color-mix(in oklab, var(--panel-accent) 22%, transparent),
+            transparent 60%
+        ),
+        radial-gradient(
+            45rem 35rem at 75% 110%,
+            color-mix(in oklab, var(--panel) 30%, transparent),
+            transparent 65%
+        );
+}
+
+/* Menú lateral: tarjeta redondeada con degradado del color del panel. */
+[data-sidebar='sidebar'] {
+    background-image: linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--panel) 88%, white),
+        color-mix(in oklab, var(--panel) 72%, black)
+    );
+}
+
+[data-variant='floating'] [data-sidebar='sidebar'] {
+    border: 0;
+    border-radius: 1.5rem;
+    box-shadow: 0 18px 40px -20px color-mix(in oklab, var(--panel) 70%, black);
+}
+
+/* Al pasar el mouse: un velo suave (la opción activa es la «píldora»). */
+[data-sidebar='menu-button']:not([data-active='true']):not(
+        [data-state='open']
+    ):hover {
+    background-color: color-mix(in oklab, var(--panel-fg) 12%, transparent);
+    color: var(--panel-fg);
 }

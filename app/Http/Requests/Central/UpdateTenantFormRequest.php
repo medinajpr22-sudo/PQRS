@@ -25,7 +25,7 @@ class UpdateTenantFormRequest extends FormRequest
             'types' => ['required', 'array'],
             'types.*.key' => ['required', 'distinct', Rule::in(PqrsType::values())],
             'types.*.label' => ['required', 'string', 'max:60'],
-            'types.*.description' => ['nullable', 'string', 'max:200'],
+            'types.*.description' => ['nullable', 'string', 'max:400'],
             'types.*.enabled' => ['required', 'boolean'],
             'types.*.sla_days' => ['required', 'integer', 'min:1', 'max:90'],
 
@@ -44,6 +44,7 @@ class UpdateTenantFormRequest extends FormRequest
             'require_phone' => ['required', 'boolean'],
             'allow_attachments' => ['required', 'boolean'],
             'max_attachments' => ['required', 'integer', 'min:1', 'max:10'],
+            'risk_levels' => ['sometimes', 'boolean'],
             'privacy_policy_url' => ['nullable', 'url', 'max:190'],
             'privacy_text' => ['required', 'string', 'max:1000'],
         ];

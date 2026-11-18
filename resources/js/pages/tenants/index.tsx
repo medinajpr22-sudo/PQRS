@@ -1,6 +1,8 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowUpRight, Building2, Pencil, Plus, Search } from 'lucide-react';
 import { useState } from 'react';
+import { FilterPills } from '@/components/pqrs/filter-pills';
+import type { PillOption } from '@/components/pqrs/filter-pills';
 import { PageHeader } from '@/components/pqrs/page-header';
 import { Pagination } from '@/components/pqrs/pagination';
 import { TenantStatusBadge } from '@/components/pqrs/status-badge';
@@ -9,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import tenants from '@/routes/tenants';
 import type { Paginated, TenantSummary } from '@/types';
@@ -23,9 +24,10 @@ const LAYOUT_LABELS: Record<string, string> = {
     corporate: 'Corporativo',
     modern: 'Moderno',
     minimal: 'Minimalista',
+    salud: 'Salud',
 };
 
-const STATUS_TABS = [
+const STATUS_TABS: PillOption<string | null>[] = [
     { value: null, label: 'Todas' },
     { value: 'active', label: 'Activas' },
     { value: 'suspended', label: 'Suspendidas' },
@@ -76,23 +78,12 @@ export default function TenantsIndex({ tenants: page, filters }: Props) {
 
                 <Card className="gap-0 py-0">
                     <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center md:justify-between">
-                        <div className="inline-flex rounded-lg bg-muted p-1 text-sm">
-                            {STATUS_TABS.map((tab) => (
-                                <button
-                                    key={tab.label}
-                                    type="button"
-                                    onClick={() => apply({ status: tab.value })}
-                                    className={cn(
-                                        'rounded-md px-3 py-1.5 font-medium transition-colors',
-                                        (filters.status ?? null) === tab.value
-                                            ? 'bg-background shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground',
-                                    )}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
+                        <FilterPills
+                            label="Estado de la empresa"
+                            options={STATUS_TABS}
+                            value={filters.status ?? null}
+                            onChange={(status) => apply({ status })}
+                        />
                         <form
                             className="relative md:w-80"
                             onSubmit={(e) => {

@@ -1,9 +1,12 @@
-export type PortalLayoutVariant = 'corporate' | 'modern' | 'minimal';
+export type PortalLayoutVariant = 'corporate' | 'modern' | 'minimal' | 'salud';
 
 export type TenantTheme = {
     layout: PortalLayoutVariant;
     primary_color: string;
     accent_color: string;
+    /** Panel administrativo de la empresa: menú lateral y botones. */
+    panel_color: string;
+    panel_accent: string;
     font: string;
     logo_path: string | null;
     logo_url: string | null;
@@ -52,6 +55,8 @@ export type FormSchema = {
     require_phone: boolean;
     allow_attachments: boolean;
     max_attachments: number;
+    /** Reclamos en salud: el ciudadano elige el nivel de riesgo. */
+    risk_levels: boolean;
     privacy_policy_url: string;
     privacy_text: string;
 };
@@ -116,6 +121,18 @@ export type PqrsListItem = {
     is_overdue: boolean;
     assignee: { id: number; name: string } | null;
     sede: { id: number; name: string } | null;
+    risk_level: RiskLevel | null;
+    risk_label: string | null;
+};
+
+export type RiskLevel = 'simple' | 'priorizado' | 'vital';
+
+/** Nivel de riesgo de un reclamo en salud (Supersalud). */
+export type RiskLevelOption = {
+    value: RiskLevel;
+    label: string;
+    title: string;
+    description: string;
 };
 
 /** Cambio de estado permitido desde el estado actual. */
@@ -134,6 +151,7 @@ export type StaffUser = {
     is_active: boolean;
     sedes: { id: number; name: string }[];
     open_assigned: number;
+    last_login_at: string | null;
     created_at: string;
     is_me: boolean;
 };

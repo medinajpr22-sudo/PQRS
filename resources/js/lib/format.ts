@@ -91,7 +91,12 @@ export function readableTextColor(hex: string): string {
         c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
     const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 
-    return luminance > 0.45 ? '#111827' : '#ffffff';
+    // Se elige el texto con mayor contraste (WCAG) contra el color de fondo.
+    // Gris muy oscuro (#111827) tiene luminancia ≈ 0.0123.
+    const contrastWithWhite = 1.05 / (luminance + 0.05);
+    const contrastWithDark = (luminance + 0.05) / (0.0123 + 0.05);
+
+    return contrastWithDark > contrastWithWhite ? '#111827' : '#ffffff';
 }
 
 export function initials(name: string): string {
@@ -101,4 +106,36 @@ export function initials(name: string): string {
         .slice(0, 2)
         .map((w) => w[0]?.toUpperCase())
         .join('');
+}
+
+/**
+ * «hace un momento», «hace 6 días»… o «Nunca» si no hay fecha.
+ */
+export function formatRelative(value: string | null | undefined): string {
+    if (!value) {
+        return 'Nunca';
+    }
+
+    const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
+
+    if (Math.abs(seconds) < 60) {
+        return 'hace un momento';
+    }
+
+    const units: [Intl.RelativeTimeFormatUnit, number][] = [
+        ['year', 31536000],
+        ['month', 2592000],
+        ['day', 86400],
+        ['hour', 3600],
+        ['minute', 60],
+    ];
+    const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+
+    for (const [unit, size] of units) {
+        if (Math.abs(seconds) >= size) {
+            return rtf.format(Math.round(seconds / size), unit);
+        }
+    }
+
+    return 'hace un momento';
 }

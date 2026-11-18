@@ -15,12 +15,12 @@ export default function TenantLogin() {
         <>
             <Head title="Acceso del personal" />
 
-            <div className="mb-8 space-y-1">
-                <h1 className="text-2xl font-semibold tracking-tight">
-                    Acceso del personal
+            <div className="mt-6 mb-6">
+                <h1 className="text-3xl font-bold tracking-tight">
+                    Panel de PQRS
                 </h1>
-                <p className="text-sm text-muted-foreground">
-                    Ingresa al panel de PQRS de {tenant?.name}.
+                <p className="mt-1 text-zinc-500">
+                    Inicia sesión para continuar en {tenant?.name}.
                 </p>
             </div>
 
@@ -59,15 +59,15 @@ export default function TenantLogin() {
                         </div>
                         <Button
                             type="submit"
-                            className="w-full"
+                            className="h-11 w-full rounded-xl text-base font-bold shadow-md"
                             disabled={processing}
                         >
                             {processing && <Spinner />}
-                            Iniciar sesión
+                            Entrar
                         </Button>
                         <a
                             href="/"
-                            className="text-center text-sm text-muted-foreground hover:text-foreground"
+                            className="text-center text-sm text-zinc-500 hover:text-zinc-900"
                         >
                             ← Volver al portal público
                         </a>

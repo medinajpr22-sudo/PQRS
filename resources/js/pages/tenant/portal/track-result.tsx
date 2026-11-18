@@ -13,6 +13,7 @@ type Props = {
         radicado: string;
         type: string;
         sede: string | null;
+        risk: string | null;
         status: PqrsStatus;
         status_label: string;
         subject: string;
@@ -52,7 +53,8 @@ export default function TrackResult({ pqrs }: Props) {
                             </p>
                             <p className="mt-1 text-sm text-zinc-600">
                                 {pqrs.type}
-                                {pqrs.sede ? ` · Sede ${pqrs.sede}` : ''} ·{' '}
+                                {pqrs.sede ? ` · Sede ${pqrs.sede}` : ''}
+                                {pqrs.risk ? ` · ${pqrs.risk}` : ''} ·{' '}
                                 {pqrs.subject}
                             </p>
                         </div>

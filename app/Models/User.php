@@ -25,6 +25,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string $password
  * @property UserRole|null $role Solo en usuarios de empresa (BD del tenant)
  * @property bool $is_active Solo en usuarios de empresa (BD del tenant)
+ * @property Carbon|null $last_login_at Solo en usuarios de empresa (BD del tenant)
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
@@ -53,6 +54,7 @@ class User extends Authenticatable implements PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
             'role' => UserRole::class,
             'is_active' => 'boolean',
+            'last_login_at' => 'datetime',
         ];
     }
 

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PqrsStatus;
+use App\Enums\RiskLevel;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $radicado
  * @property string $type
  * @property int|null $sede_id
+ * @property RiskLevel|null $risk_level Solo en reclamos de empresas de salud
  * @property PqrsStatus $status
  * @property string $channel
  * @property string $requester_name
@@ -44,6 +46,7 @@ class Pqrs extends Model
     {
         return [
             'status' => PqrsStatus::class,
+            'risk_level' => RiskLevel::class,
             'extra_fields' => 'array',
             'due_at' => 'datetime',
             'responded_at' => 'datetime',
@@ -101,6 +104,16 @@ class Pqrs extends Model
         if ($ids !== null) {
             $query->whereIn('sede_id', $ids);
         }
+    }
+
+    /**
+     * Primero los reclamos de riesgo vital, luego los priorizados y después el resto.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeOrderByRisk(Builder $query): void
+    {
+        $query->orderByRaw("case risk_level when 'vital' then 0 when 'priorizado' then 1 else 2 end");
     }
 
     /**

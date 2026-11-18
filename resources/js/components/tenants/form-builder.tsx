@@ -278,6 +278,12 @@ export function FormBuilder({
                         checked={data.allow_attachments}
                         onChange={(v) => setData('allow_attachments', v)}
                     />
+                    <Toggle
+                        id="risk_levels"
+                        label="Reclamos por nivel de riesgo (simple, priorizado, vital · Supersalud)"
+                        checked={data.risk_levels}
+                        onChange={(v) => setData('risk_levels', v)}
+                    />
                     <div
                         className={cn(
                             'flex items-center gap-3',
