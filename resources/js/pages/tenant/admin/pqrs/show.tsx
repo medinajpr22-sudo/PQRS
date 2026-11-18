@@ -119,14 +119,16 @@ export default function PqrsShow({
                   },
               ]
             : staff;
-    const [mode, setMode] = useState<'response' | 'note'>(
-        pqrs.status === 'cerrada' ? 'note' : 'response',
-    );
+    const [selectedMode, setMode] = useState<'response' | 'note'>('response');
     const [pending, setPending] = useState<StatusTransition | null>(null);
     const [reason, setReason] = useState('');
     const [saving, setSaving] = useState(false);
     const isOpen = pqrs.status === 'radicada' || pqrs.status === 'en_tramite';
     const isClosed = pqrs.status === 'cerrada';
+    // Una PQRS cerrada solo admite notas internas: hay que reabrirla para
+    // responder. Se deriva del estado actual para que el formulario cambie
+    // apenas se cierra la solicitud, sin recargar la página.
+    const mode = isClosed ? 'note' : selectedMode;
 
     const changeStatus = (status: string, withReason?: string) => {
         setSaving(true);
@@ -524,9 +526,14 @@ export default function PqrsShow({
                                             )
                                         }
                                     >
-                                        <option value="">Sin responsable</option>
+                                        <option value="">
+                                            Sin responsable
+                                        </option>
                                         {staffOptions.map((s) => (
-                                            <option key={s.value} value={s.value}>
+                                            <option
+                                                key={s.value}
+                                                value={s.value}
+                                            >
                                                 {s.label}
                                                 {s.value === auth.user.id
                                                     ? ' (yo)'

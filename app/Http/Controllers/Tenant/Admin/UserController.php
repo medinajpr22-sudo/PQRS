@@ -51,6 +51,8 @@ class UserController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        self::normalizeEmail($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')],
@@ -60,7 +62,7 @@ class UserController extends Controller
 
         $user = new User([
             'name' => $data['name'],
-            'email' => Str::lower($data['email']),
+            'email' => $data['email'],
             'password' => $data['password'],
         ]);
         $user->forceFill([
@@ -76,6 +78,8 @@ class UserController extends Controller
 
     public function update(Request $request, User $user): RedirectResponse
     {
+        self::normalizeEmail($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
@@ -103,31 +107,60 @@ class UserController extends Controller
         }
 
         $deactivated = $user->is_active && ! $isActive;
+        $passwordChanged = filled($data['password'] ?? null);
+        $currentSessionId = $request->session()->getId();
 
-        DB::transaction(function () use ($user, $data, $role, $isActive, $deactivated) {
+        DB::transaction(function () use ($user, $data, $role, $isActive, $deactivated, $passwordChanged, $stopsBeingActiveAdmin, $currentSessionId) {
             $user->fill([
                 'name' => $data['name'],
-                'email' => Str::lower($data['email']),
+                'email' => $data['email'],
             ]);
 
-            if (filled($data['password'] ?? null)) {
+            if ($passwordChanged) {
                 $user->password = $data['password'];
             }
 
             $user->forceFill(['role' => $role, 'is_active' => $isActive]);
 
-            if ($deactivated) {
-                // Cierra sus sesiones abiertas y anula el "Recordarme".
+            if ($deactivated || $passwordChanged) {
+                // Cierra sus sesiones abiertas (menos la de quien hace el cambio)
+                // y anula el "Recordarme": una contraseña nueva o una cuenta
+                // desactivada no deben dejar sesiones vivas.
                 $user->setRememberToken(Str::random(60));
-                DB::table('sessions')->where('user_id', $user->id)->delete();
+                DB::table('sessions')
+                    ->where('user_id', $user->id)
+                    ->where('id', '!=', $currentSessionId)
+                    ->delete();
             }
 
             $user->save();
+
+            // Se vuelve a contar después de escribir: si dos administradores se
+            // quitan el rol al mismo tiempo, el segundo ve el cambio del primero
+            // y su transacción se revierte.
+            if ($stopsBeingActiveAdmin && ! User::where('role', UserRole::Admin)->where('is_active', true)->exists()) {
+                throw ValidationException::withMessages([
+                    'role' => 'La empresa debe tener al menos un administrador activo.',
+                ]);
+            }
         });
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Usuario {$user->name} actualizado."]);
 
         return back();
+    }
+
+    /**
+     * Los correos se guardan en minúsculas. Se normalizan antes de validar para
+     * que la regla «unique» compare exactamente lo que se va a guardar.
+     */
+    protected static function normalizeEmail(Request $request): void
+    {
+        $email = $request->input('email');
+
+        if (is_string($email)) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
     }
 
     /**

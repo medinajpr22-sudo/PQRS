@@ -54,7 +54,7 @@ class TenantProvisioner
             $tenant->run(function () use ($data) {
                 $user = new User([
                     'name' => $data['admin_name'],
-                    'email' => $data['admin_email'],
+                    'email' => Str::lower(trim($data['admin_email'])),
                     'password' => $data['admin_password'],
                 ]);
                 $user->email_verified_at = now();

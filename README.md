@@ -6,39 +6,44 @@ Construida con Laravel 13, Inertia + React, Tailwind y [stancl/tenancy](https://
 
 ## Cómo está organizada
 
-| Parte | URL (desarrollo) | Quién la usa |
-|---|---|---|
-| Panel central | `http://localhost:8000` | Super administrador: crea y configura empresas |
-| Portal público | `http://<empresa>.localhost:8000` | Ciudadanos: radican y consultan PQRS |
-| Panel de la empresa | `http://<empresa>.localhost:8000/admin` | Funcionarios de la empresa: responden PQRS |
+| Parte               | URL (desarrollo)                        | Quién la usa                                   |
+| ------------------- | --------------------------------------- | ---------------------------------------------- |
+| Panel central       | `http://localhost:8000`                 | Super administrador: crea y configura empresas |
+| Portal público      | `http://<empresa>.localhost:8000`       | Ciudadanos: radican y consultan PQRS           |
+| Panel de la empresa | `http://<empresa>.localhost:8000/admin` | Funcionarios de la empresa: responden PQRS     |
 
 ### Panel central
+
 - **Dashboard** con PQRS consolidadas de todas las empresas (abiertas, vencidas, por mes y por tipo).
 - **Empresas**: crear (se crea su base de datos y su usuario administrador), suspender, eliminar.
 - **Diseño del portal** por empresa: plantilla (corporativo, moderno, minimalista), colores, logo, tipografía y textos, con vista previa en vivo.
 - **Formulario PQRS** por empresa: tipos habilitados, nombre y plazo (días hábiles) de cada tipo, datos obligatorios, adjuntos y campos personalizados (texto, lista, opción única, fecha, casilla, etc.).
 
 ### Portal público de cada empresa
+
 - Radicación con el formulario propio de la empresa → número de radicado (`PREFIJO-AÑO-00001`) y correo de confirmación.
 - Consulta de estado con radicado + correo; muestra respuestas y adjuntos de respuesta.
 
 ### Panel de la empresa
+
 - Resumen: abiertas, por vencer, vencidas, % respondidas a tiempo.
-- Bandeja con búsqueda y filtros (incluye **Mis PQRS** y "sin responsable"); detalle con historial, notas internas y respuestas al ciudadano (envía correo y cambia el estado a *Respondida*).
-- **Usuarios** (solo administradores): crear funcionarios, cambiar rol, desactivar (cierra sus sesiones). Roles: *administrador* (gestiona usuarios y asigna a cualquiera) y *funcionario* (puede tomar las PQRS sin responsable o soltar las suyas).
+- Bandeja con búsqueda y filtros (incluye **Mis PQRS** y "sin responsable"); detalle con historial, notas internas y respuestas al ciudadano (envía correo y cambia el estado a _Respondida_).
+- **Usuarios** (solo administradores): crear funcionarios, cambiar rol, desactivar (cierra sus sesiones). Roles: _administrador_ (gestiona usuarios y asigna a cualquiera) y _funcionario_ (puede tomar las PQRS sin responsable o soltar las suyas).
 - **Asignación**: cada PQRS puede tener un responsable; se le avisa por correo y queda en el historial interno.
 
 ### Reglas de estado
-| Desde | Puede pasar a (a mano) |
-|---|---|
-| Radicada | En trámite · Cerrada (pide motivo) |
-| En trámite | Cerrada (pide motivo) |
-| Respondida | Cerrada · En trámite (reabrir, pide motivo) |
-| Cerrada | En trámite (reabrir, pide motivo) |
 
-*Respondida* solo se alcanza enviando una respuesta (así siempre queda la fecha y se notifica al ciudadano). Una PQRS cerrada no se puede responder sin reabrirla. Todos los cambios, incluidos los automáticos, quedan en el historial.
+| Desde      | Puede pasar a (a mano)                      |
+| ---------- | ------------------------------------------- |
+| Radicada   | En trámite · Cerrada (pide motivo)          |
+| En trámite | Cerrada (pide motivo)                       |
+| Respondida | Cerrada · En trámite (reabrir, pide motivo) |
+| Cerrada    | En trámite (reabrir, pide motivo)           |
+
+_Respondida_ solo se alcanza enviando una respuesta (así siempre queda la fecha y se notifica al ciudadano). Una PQRS cerrada no se puede responder sin reabrirla. Todos los cambios, incluidos los automáticos, quedan en el historial.
 
 ### Plazos
+
 El vencimiento se cuenta en días hábiles desde el día siguiente a la radicación, sin sábados, domingos ni **festivos de Colombia, que se calculan solos** para cualquier año (`app/Support/ColombianHolidays.php`). Días extra se agregan en `config/pqrs.php`.
 
 ## Instalación local
@@ -80,16 +85,16 @@ Las credenciales de prueba están documentadas en `database/seeders/DatabaseSeed
 
 Archivos clave:
 
-| Archivo | Para qué |
-|---|---|
-| `app/Models/Tenant.php` | Modelo de empresa, diseño y formulario resueltos |
-| `app/Support/TenantDefaults.php` | Valores por defecto de diseño y formulario |
-| `app/Services/TenantProvisioner.php` | Alta de una empresa (BD, dominio, admin) |
-| `app/Services/PqrsFormRules.php` | Validación dinámica según el formulario de cada empresa |
-| `app/Services/PqrsService.php` | Radicación, respuestas, cambios de estado y notificaciones |
-| `resources/js/components/portal/portal-shell.tsx` | Las 3 plantillas visuales del portal |
-| `resources/js/components/tenants/form-builder.tsx` | Constructor de formularios |
-| `config/pqrs.php` | Festivos y reglas de adjuntos |
+| Archivo                                            | Para qué                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| `app/Models/Tenant.php`                            | Modelo de empresa, diseño y formulario resueltos           |
+| `app/Support/TenantDefaults.php`                   | Valores por defecto de diseño y formulario                 |
+| `app/Services/TenantProvisioner.php`               | Alta de una empresa (BD, dominio, admin)                   |
+| `app/Services/PqrsFormRules.php`                   | Validación dinámica según el formulario de cada empresa    |
+| `app/Services/PqrsService.php`                     | Radicación, respuestas, cambios de estado y notificaciones |
+| `resources/js/components/portal/portal-shell.tsx`  | Las 3 plantillas visuales del portal                       |
+| `resources/js/components/tenants/form-builder.tsx` | Constructor de formularios                                 |
+| `config/pqrs.php`                                  | Festivos y reglas de adjuntos                              |
 
 ## Comandos útiles
 

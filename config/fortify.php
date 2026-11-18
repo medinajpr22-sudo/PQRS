@@ -164,7 +164,9 @@ return [
         // Registro público deshabilitado: los administradores se crean por seeder/comando.
         // Features::registration(),
         Features::resetPasswords(),
-        Features::emailVerification(),
+        // Verificación de correo deshabilitada: sin registro público, cada cuenta
+        // la crea un administrador, así que se entra directo al panel.
+        // Features::emailVerification(),
         Features::twoFactorAuthentication([
             'confirm' => true,
             'confirmPassword' => true,

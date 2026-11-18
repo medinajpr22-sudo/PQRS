@@ -11,6 +11,7 @@ use App\Notifications\PqrsReceivedNotification;
 use App\Notifications\PqrsRespondedNotification;
 use App\Services\TenantProvisioner;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 /**
@@ -353,4 +354,54 @@ test('only company admins manage users and deactivated staff cannot log in', fun
         ->assertSessionHasErrors('email');
 
     expect($tenant->run(fn () => User::where('email', 'nueva@staff.test')->first()?->role))->toBe(UserRole::Funcionario);
+});
+
+test('staff emails are case-insensitive for uniqueness and login', function () {
+    $tenant = makeCompany('xc');
+    [$admin] = $tenant->run(fn () => [User::first(), makeStaff('ana')]);
+
+    // Ya existe ana@staff.test: con otras mayúsculas es un error de validación, no un 500.
+    $this->actingAs($admin)->post(portal($tenant, 'admin/usuarios'), [
+        'name' => 'Ana Duplicada',
+        'email' => 'Ana@Staff.TEST',
+        'role' => 'funcionario',
+        'password' => 'password123',
+    ])->assertSessionHasErrors('email');
+
+    $this->actingAs($admin)->post(portal($tenant, 'admin/usuarios'), [
+        'name' => 'Luis Pérez',
+        'email' => ' Luis.Perez@Staff.TEST ',
+        'role' => 'funcionario',
+        'password' => 'password123',
+    ])->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => User::where('email', 'luis.perez@staff.test')->exists()))->toBeTrue();
+
+    $this->app['auth']->forgetGuards();
+
+    // Entra escribiendo el correo tal como se lo dieron, con mayúsculas.
+    $this->post(portal($tenant, 'admin/login'), ['email' => 'Luis.Perez@Staff.test', 'password' => 'password123'])
+        ->assertRedirect(route('tenant.admin.dashboard'));
+});
+
+test('changing a staff password closes that user sessions', function () {
+    $tenant = makeCompany('xp');
+    [$admin, $pedro] = $tenant->run(fn () => [User::first(), makeStaff('pedro')]);
+
+    $tenant->run(fn () => DB::table('sessions')->insert([
+        'id' => 'sesion-de-pedro',
+        'user_id' => $pedro->id,
+        'payload' => '',
+        'last_activity' => now()->timestamp,
+    ]));
+
+    $this->actingAs($admin)->put(portal($tenant, "admin/usuarios/{$pedro->id}"), [
+        'name' => $pedro->name,
+        'email' => $pedro->email,
+        'role' => 'funcionario',
+        'is_active' => true,
+        'password' => 'NuevaClave123',
+    ])->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => DB::table('sessions')->where('user_id', $pedro->id)->exists()))->toBeFalse();
 });

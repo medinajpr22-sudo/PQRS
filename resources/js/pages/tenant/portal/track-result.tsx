@@ -119,7 +119,7 @@ export default function TrackResult({ pqrs }: Props) {
                                             className={
                                                 a.type === 'response'
                                                     ? 'mt-2 rounded-xl border border-zinc-200 bg-(--brand-soft) p-4 text-sm whitespace-pre-line text-zinc-800'
-                                                    : 'mt-0.5 text-sm text-zinc-600'
+                                                    : 'mt-0.5 text-sm whitespace-pre-line text-zinc-600'
                                             }
                                         >
                                             {a.body}

@@ -157,7 +157,10 @@ export default function PqrsIndex({
                                 <option value="me">Asignadas a mí</option>
                                 <option value="none">Sin responsable</option>
                                 {staff.map((s) => (
-                                    <option key={s.value} value={String(s.value)}>
+                                    <option
+                                        key={s.value}
+                                        value={String(s.value)}
+                                    >
                                         {s.label}
                                     </option>
                                 ))}
@@ -292,7 +295,8 @@ export default function PqrsIndex({
                                                         : 'truncate text-muted-foreground'
                                                 }
                                             >
-                                                {p.assignee?.name ?? 'Sin asignar'}
+                                                {p.assignee?.name ??
+                                                    'Sin asignar'}
                                             </p>
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap tabular-nums">

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,6 +24,11 @@ class AuthController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        // Los correos de los funcionarios se guardan en minúsculas.
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($email))]);
+        }
+
         $credentials = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],

@@ -190,7 +190,8 @@ export default function UsersIndex({ users, roles }: Props) {
                         <>
                             <DialogTitle>Editar usuario</DialogTitle>
                             <DialogDescription>
-                                Al desactivarlo se cierran sus sesiones abiertas.
+                                Al desactivarlo se cierran sus sesiones
+                                abiertas.
                             </DialogDescription>
                             <Form
                                 key={editing.id}
@@ -214,11 +215,15 @@ export default function UsersIndex({ users, roles }: Props) {
                                                 id="is_active"
                                                 name="is_active"
                                                 defaultValue={
-                                                    editing.is_active ? '1' : '0'
+                                                    editing.is_active
+                                                        ? '1'
+                                                        : '0'
                                                 }
                                                 disabled={editing.is_me}
                                             >
-                                                <option value="1">Activo</option>
+                                                <option value="1">
+                                                    Activo
+                                                </option>
                                                 <option value="0">
                                                     Inactivo
                                                 </option>
