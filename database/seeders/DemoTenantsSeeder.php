@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\PqrsStatus;
+use App\Enums\UserRole;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\Tenant;
@@ -32,7 +33,21 @@ class DemoTenantsSeeder extends Seeder
                 'admin_password' => 'Admin123*',
             ]);
 
-            $tenant->run(fn () => $this->seedRequests($tenant, $company['samples']));
+            $tenant->run(function () use ($tenant, $company) {
+                // Un funcionario de ejemplo para probar roles y asignaciones.
+                $staff = new User([
+                    'name' => 'Funcionario '.$company['short'],
+                    'email' => "funcionario@{$company['id']}.test",
+                    'password' => 'Admin123*',
+                ]);
+                $staff->forceFill([
+                    'role' => UserRole::Funcionario,
+                    'is_active' => true,
+                    'email_verified_at' => now(),
+                ])->save();
+
+                $this->seedRequests($tenant, $company['samples']);
+            });
         }
     }
 

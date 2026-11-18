@@ -46,6 +46,7 @@ class DashboardController extends Controller
                 'total' => (int) ($byStatus[$s->value] ?? 0),
             ]),
             'urgent' => Pqrs::open()
+                ->with('assignee:id,name')
                 ->orderBy('due_at')
                 ->limit(6)
                 ->get()

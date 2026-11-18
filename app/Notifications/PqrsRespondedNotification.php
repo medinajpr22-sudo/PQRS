@@ -6,14 +6,26 @@ use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\Tenant;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class PqrsRespondedNotification extends Notification
+/**
+ * Se envía por cola, con reintentos (ver PqrsReceivedNotification).
+ */
+class PqrsRespondedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Pqrs $pqrs, public PqrsActivity $activity, public Tenant $tenant) {}
+    public int $tries = 5;
+
+    /** @var list<int> Segundos de espera entre reintentos */
+    public array $backoff = [60, 300, 900, 3600];
+
+    public function __construct(public Pqrs $pqrs, public PqrsActivity $activity, public Tenant $tenant)
+    {
+        $this->afterCommit();
+    }
 
     /**
      * @return list<string>

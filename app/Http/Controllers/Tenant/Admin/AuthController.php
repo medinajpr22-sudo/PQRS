@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +28,8 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ], [], ['email' => 'correo electrónico', 'password' => 'contraseña']);
 
-        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+        // Los usuarios desactivados por el administrador no pueden entrar.
+        if (! Auth::attemptWhen($credentials, fn (User $user) => $user->is_active, $request->boolean('remember'))) {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);

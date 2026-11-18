@@ -8,6 +8,7 @@ use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\PqrsAttachment;
 use App\Models\Tenant;
+use App\Models\User;
 use App\Services\PqrsFormRules;
 use App\Services\PqrsService;
 use Illuminate\Http\RedirectResponse;
@@ -30,9 +31,17 @@ class PqrsController extends Controller
             'status' => $request->query('status'),
             'type' => $request->query('type'),
             'overdue' => $request->boolean('overdue'),
+            // "me" = Mis PQRS, "none" = sin responsable, o el id de un funcionario
+            'assigned' => is_string($request->query('assigned')) ? $request->query('assigned') : null,
         ];
 
+        $assigned = (string) $filters['assigned'];
+
         $pqrs = Pqrs::query()
+            ->with('assignee:id,name')
+            ->when($assigned === 'me', fn ($q) => $q->where('assigned_to', $request->user()->id))
+            ->when($assigned === 'none', fn ($q) => $q->whereNull('assigned_to'))
+            ->when(ctype_digit($assigned), fn ($q) => $q->where('assigned_to', (int) $assigned))
             ->when($filters['search'] !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('radicado', 'like', "%{$filters['search']}%")
                 ->orWhere('requester_name', 'like', "%{$filters['search']}%")
@@ -52,16 +61,17 @@ class PqrsController extends Controller
             'filters' => $filters,
             'statuses' => PqrsStatus::options(),
             'types' => $types->map(fn ($t) => ['value' => $t['key'], 'label' => $t['label']])->values(),
+            'staff' => self::staffOptions(),
         ]);
     }
 
-    public function show(Pqrs $pqrs): Response
+    public function show(Request $request, Pqrs $pqrs): Response
     {
         /** @var Tenant $tenant */
         $tenant = tenant();
         $types = collect($tenant->resolvedFormSchema()['types'])->keyBy('key');
 
-        $pqrs->load(['activities.user', 'activities.attachments', 'attachments']);
+        $pqrs->load(['activities.user', 'activities.attachments', 'attachments', 'assignee']);
 
         // Adjuntos enviados por el ciudadano al radicar.
         $createdActivityId = $pqrs->activities->firstWhere('type', PqrsActivity::TYPE_CREATED)?->id;
@@ -94,7 +104,10 @@ class PqrsController extends Controller
                         : $a->attachments->map(fn (PqrsAttachment $f) => self::attachment($f)),
                 ]),
             ],
-            'statuses' => PqrsStatus::options(),
+            // Solo los cambios de estado permitidos desde el estado actual.
+            'transitions' => $pqrs->status->transitionOptions(),
+            'staff' => self::staffOptions(),
+            'canAssignOthers' => $request->user()->isAdmin(),
         ]);
     }
 
@@ -102,13 +115,50 @@ class PqrsController extends Controller
     {
         $data = $request->validate([
             'status' => ['required', Rule::enum(PqrsStatus::class)],
-        ]);
+            'reason' => ['nullable', 'string', 'min:5', 'max:1000'],
+        ], [], ['status' => 'estado', 'reason' => 'motivo']);
 
-        $service->changeStatus($pqrs, PqrsStatus::from($data['status']), $request->user());
+        $service->changeStatus($pqrs, PqrsStatus::from($data['status']), $request->user(), $data['reason'] ?? null);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Estado actualizado.']);
 
         return back();
+    }
+
+    /**
+     * Asigna la PQRS a un funcionario (o le quita el responsable).
+     */
+    public function assign(Request $request, Pqrs $pqrs, PqrsService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'assigned_to' => ['nullable', 'integer', Rule::exists('users', 'id')],
+        ], [], ['assigned_to' => 'funcionario']);
+
+        /** @var Tenant $tenant */
+        $tenant = tenant();
+        $assignee = isset($data['assigned_to']) ? User::find($data['assigned_to']) : null;
+
+        $service->assign($tenant, $pqrs, $assignee, $request->user());
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $assignee ? "Solicitud asignada a {$assignee->name}." : 'Se quitó el responsable.',
+        ]);
+
+        return back();
+    }
+
+    /**
+     * Funcionarios activos para asignar o filtrar.
+     *
+     * @return Collection<int, array{value: int, label: string}>
+     */
+    public static function staffOptions(): Collection
+    {
+        return User::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (User $u) => ['value' => $u->id, 'label' => $u->name]);
     }
 
     /**
@@ -130,6 +180,7 @@ class PqrsController extends Controller
             'created_at' => $pqrs->created_at,
             'due_at' => $pqrs->due_at,
             'is_overdue' => $pqrs->isOverdue(),
+            'assignee' => $pqrs->assignee?->only(['id', 'name']),
         ];
     }
 

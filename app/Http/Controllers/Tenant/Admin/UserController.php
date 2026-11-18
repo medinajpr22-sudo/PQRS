@@ -1,0 +1,146 @@
+<?php
+
+namespace App\Http\Controllers\Tenant\Admin;
+
+use App\Enums\PqrsStatus;
+use App\Enums\UserRole;
+use App\Http\Controllers\Controller;
+use App\Models\User;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/**
+ * Gestión de funcionarios de la empresa (solo administradores).
+ *
+ * Los usuarios no se borran: se desactivan, para conservar quién hizo
+ * cada actuación en el historial de las PQRS.
+ */
+class UserController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $users = User::query()
+            ->withCount(['assignedPqrs as open_assigned' => fn ($q) => $q->whereIn('status', PqrsStatus::openValues())])
+            ->orderByDesc('is_active')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'role' => $u->role?->value,
+                'role_label' => $u->role?->label(),
+                'is_active' => $u->is_active,
+                'open_assigned' => $u->open_assigned,
+                'created_at' => $u->created_at,
+                'is_me' => $u->id === $request->user()->id,
+            ]);
+
+        return Inertia::render('tenant/admin/users/index', [
+            'users' => $users,
+            'roles' => UserRole::options(),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:150'],
+            'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')],
+            'role' => ['required', Rule::enum(UserRole::class)],
+            'password' => ['required', 'string', Password::default()],
+        ], [], self::attributes());
+
+        $user = new User([
+            'name' => $data['name'],
+            'email' => Str::lower($data['email']),
+            'password' => $data['password'],
+        ]);
+        $user->forceFill([
+            'role' => UserRole::from($data['role']),
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ])->save();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Usuario {$user->name} creado."]);
+
+        return back();
+    }
+
+    public function update(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:150'],
+            'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
+            'role' => ['required', Rule::enum(UserRole::class)],
+            'is_active' => ['required', 'boolean'],
+            'password' => ['nullable', 'string', Password::default()],
+        ], [], self::attributes());
+
+        $role = UserRole::from($data['role']);
+        $isActive = (bool) $data['is_active'];
+        $isMe = $user->id === $request->user()->id;
+
+        if ($isMe && ($role !== $user->role || ! $isActive)) {
+            throw ValidationException::withMessages([
+                'role' => 'No puedes cambiar tu propio rol ni desactivarte. Pídeselo a otro administrador.',
+            ]);
+        }
+
+        $stopsBeingActiveAdmin = $user->isAdmin() && $user->is_active && ($role !== UserRole::Admin || ! $isActive);
+
+        if ($stopsBeingActiveAdmin && User::where('role', UserRole::Admin)->where('is_active', true)->count() <= 1) {
+            throw ValidationException::withMessages([
+                'role' => 'La empresa debe tener al menos un administrador activo.',
+            ]);
+        }
+
+        $deactivated = $user->is_active && ! $isActive;
+
+        DB::transaction(function () use ($user, $data, $role, $isActive, $deactivated) {
+            $user->fill([
+                'name' => $data['name'],
+                'email' => Str::lower($data['email']),
+            ]);
+
+            if (filled($data['password'] ?? null)) {
+                $user->password = $data['password'];
+            }
+
+            $user->forceFill(['role' => $role, 'is_active' => $isActive]);
+
+            if ($deactivated) {
+                // Cierra sus sesiones abiertas y anula el "Recordarme".
+                $user->setRememberToken(Str::random(60));
+                DB::table('sessions')->where('user_id', $user->id)->delete();
+            }
+
+            $user->save();
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Usuario {$user->name} actualizado."]);
+
+        return back();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected static function attributes(): array
+    {
+        return [
+            'name' => 'nombre',
+            'email' => 'correo electrónico',
+            'role' => 'rol',
+            'is_active' => 'estado',
+            'password' => 'contraseña',
+        ];
+    }
+}
