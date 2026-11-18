@@ -60,7 +60,9 @@ php artisan queue:work   # en otra terminal: envía los correos (van por cola)
 
 Si ya tenías empresas creadas, después de actualizar ejecuta `php artisan tenants:migrate` para agregar el contador de radicados y los roles de usuario a sus bases de datos.
 
-Abre **http://localhost:8000** (no `127.0.0.1`: el dominio central es `localhost`). Los navegadores resuelven `*.localhost` automáticamente, así que los portales de ejemplo funcionan sin tocar el archivo `hosts`:
+Abre **http://localhost:8000**. El panel central también responde en `http://127.0.0.1:8000` (la dirección que imprime `php artisan serve`), porque los dos están en `CENTRAL_DOMAINS`. Cualquier otro dominio que no sea de una empresa registrada devuelve **404**.
+
+Los portales de las empresas solo funcionan con `<empresa>.localhost`. Los navegadores resuelven `*.localhost` automáticamente, así que los portales de ejemplo funcionan sin tocar el archivo `hosts`:
 
 - http://andina.localhost:8000 — diseño corporativo
 - http://santalucia.localhost:8000 — diseño moderno
