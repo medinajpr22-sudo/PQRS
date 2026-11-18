@@ -10,26 +10,38 @@ Construida con Laravel 13, Inertia + React, Tailwind y [stancl/tenancy](https://
 | ------------------- | --------------------------------------- | ---------------------------------------------- |
 | Panel central       | `http://localhost:8000`                 | Super administrador: crea y configura empresas |
 | Portal público      | `http://<empresa>.localhost:8000`       | Ciudadanos: radican y consultan PQRS           |
-| Panel de la empresa | `http://<empresa>.localhost:8000/admin` | Funcionarios de la empresa: responden PQRS     |
+| Panel de la empresa | `http://<empresa>.localhost:8000/admin` | Administrador de empresa y agentes             |
 
 ### Panel central
 
 - **Dashboard** con PQRS consolidadas de todas las empresas (abiertas, vencidas, por mes y por tipo).
-- **Empresas**: crear (se crea su base de datos y su usuario administrador), suspender, eliminar.
+- **Empresas**: crear (el super administrador define el **nombre de su base de datos** y se crea su usuario «Administrador de empresa»), suspender, eliminar.
 - **Diseño del portal** por empresa: plantilla (corporativo, moderno, minimalista), colores, logo, tipografía y textos, con vista previa en vivo.
 - **Formulario PQRS** por empresa: tipos habilitados, nombre y plazo (días hábiles) de cada tipo, datos obligatorios, adjuntos y campos personalizados (texto, lista, opción única, fecha, casilla, etc.).
 
 ### Portal público de cada empresa
 
-- Radicación con el formulario propio de la empresa → número de radicado (`PREFIJO-AÑO-00001`) y correo de confirmación.
+- Radicación con el formulario propio de la empresa → número de radicado (`PREFIJO-AÑO-00001`) y correo de confirmación. Si la empresa tiene sedes, el ciudadano elige a cuál dirige su solicitud.
 - Consulta de estado con radicado + correo; muestra respuestas y adjuntos de respuesta.
 
 ### Panel de la empresa
 
-- Resumen: abiertas, por vencer, vencidas, % respondidas a tiempo.
-- Bandeja con búsqueda y filtros (incluye **Mis PQRS** y "sin responsable"); detalle con historial, notas internas y respuestas al ciudadano (envía correo y cambia el estado a _Respondida_).
-- **Usuarios** (solo administradores): crear funcionarios, cambiar rol, desactivar (cierra sus sesiones). Roles: _administrador_ (gestiona usuarios y asigna a cualquiera) y _funcionario_ (puede tomar las PQRS sin responsable o soltar las suyas).
-- **Asignación**: cada PQRS puede tener un responsable; se le avisa por correo y queda en el historial interno.
+- Resumen: abiertas, por vencer, vencidas, % respondidas a tiempo y **totales por sede**.
+- Bandeja con búsqueda y filtros (sede, **Mis PQRS**, "sin responsable"…); detalle con historial, notas internas y respuestas al ciudadano (envía correo y cambia el estado a _Respondida_).
+- **Sedes** (ej. Neiva, Yopal, Bogotá): cada PQRS pertenece a una. Se desactivan en lugar de borrarse.
+- **Usuarios**: crear agentes, asignarles sedes (se pueden cambiar en cualquier momento), desactivar (cierra sus sesiones).
+- **Asignación**: cada PQRS puede tener un responsable que tenga acceso a su sede; se le avisa por correo y queda en el historial interno.
+- **Traslado de sede**: si el paciente se equivocó de sede, se traslada la PQRS (queda en el historial interno).
+
+### Roles
+
+| Rol                          | Dónde               | Qué puede hacer                                                                                                                                                                      |
+| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Super administrador**      | Panel central       | Crea y gestiona las empresas, define el nombre de su base de datos y crea su administrador inicial.                                                                                  |
+| **Administrador de empresa** | Panel de la empresa | Toda la operación: sedes, usuarios, sedes de cada agente, todas las PQRS y reportes de todas las sedes.                                                                              |
+| **Agente**                   | Panel de la empresa | Solo las PQRS de sus sedes: verlas, gestionarlas, responder, notas internas y trasladarlas a otra sede. Toma las que no tienen responsable o suelta las suyas. Las demás le dan 404. |
+
+Las PQRS sin sede (radicadas antes de crear sedes) solo las ve el administrador de empresa hasta que les asigne una. Si a un agente le quitan una sede, sus PQRS abiertas de esa sede quedan sin responsable.
 
 ### Reglas de estado
 
@@ -63,7 +75,7 @@ php artisan queue:work   # en otra terminal: envía los correos (van por cola)
 
 > Requiere **PHP 8.4** (Laravel 13 y Pest 5 lo exigen).
 
-Si ya tenías empresas creadas, después de actualizar ejecuta `php artisan tenants:migrate` para agregar el contador de radicados y los roles de usuario a sus bases de datos.
+Si ya tenías empresas creadas, después de actualizar ejecuta `php artisan tenants:migrate` para agregar a sus bases de datos lo nuevo (contador de radicados, roles, sedes). Los antiguos «funcionarios» pasan a ser «agentes» sin sedes: asígnaselas en Usuarios.
 
 Abre **http://localhost:8000**. El panel central también responde en `http://127.0.0.1:8000` (la dirección que imprime `php artisan serve`), porque los dos están en `CENTRAL_DOMAINS`. Cualquier otro dominio que no sea de una empresa registrada devuelve **404**.
 

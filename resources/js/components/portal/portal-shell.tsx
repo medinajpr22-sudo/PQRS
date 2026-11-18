@@ -157,10 +157,10 @@ function FooterContent({
                     </a>
                 )}
                 {preview ? (
-                    <span>Acceso funcionarios</span>
+                    <span>Acceso del personal</span>
                 ) : (
                     <a href="/admin/login" className="hover:underline">
-                        Acceso funcionarios
+                        Acceso del personal
                     </a>
                 )}
             </div>

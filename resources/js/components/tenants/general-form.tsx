@@ -113,6 +113,20 @@ export function GeneralForm({
                                 />
                                 <InputError message={errors.radicado_prefix} />
                             </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="database">Base de datos</Label>
+                                <Input
+                                    id="database"
+                                    value={tenant.database}
+                                    readOnly
+                                    disabled
+                                    className="font-mono"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Se define al crear la empresa y no se puede
+                                    cambiar.
+                                </p>
+                            </div>
                         </CardContent>
                     </Card>
 

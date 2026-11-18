@@ -4,6 +4,7 @@ use App\Enums\PqrsStatus;
 use App\Enums\UserRole;
 use App\Models\Pqrs;
 use App\Models\PqrsAttachment;
+use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\PqrsAssignedNotification;
@@ -34,14 +35,26 @@ function makeCompany(string $id, array $formSchema = []): Tenant
 }
 
 /**
- * Crea un funcionario dentro de la empresa actual (llamar dentro de $tenant->run()).
+ * Crea un usuario de la empresa actual (llamar dentro de $tenant->run()).
+ * Por defecto es un agente; $sedes son las sedes que atiende.
+ *
+ * @param  list<Sede>  $sedes
  */
-function makeStaff(string $name, UserRole $role = UserRole::Funcionario): User
+function makeStaff(string $name, UserRole $role = UserRole::Agente, array $sedes = []): User
 {
     $user = new User(['name' => ucfirst($name), 'email' => "{$name}@staff.test", 'password' => 'password']);
     $user->forceFill(['role' => $role, 'is_active' => true, 'email_verified_at' => now()])->save();
+    $user->sedes()->sync(array_map(fn (Sede $s) => $s->id, $sedes));
 
     return $user->fresh();
+}
+
+/**
+ * Crea una sede en la empresa actual (llamar dentro de $tenant->run()).
+ */
+function makeSede(string $name, bool $active = true): Sede
+{
+    return Sede::create(['name' => $name, 'is_active' => $active]);
 }
 
 function portal(Tenant $tenant, string $path = ''): string
@@ -82,6 +95,7 @@ test('super admin can create a company with its own database and admin user', fu
             'plan' => 'basico',
             'subdomain' => 'empresa-nueva',
             'radicado_prefix' => 'ENS',
+            'database' => 'pqrs_empresa_nueva',
             'admin_name' => 'Ana Admin',
             'admin_email' => 'ana@empresa-nueva.test',
             'admin_password' => 'password123',
@@ -92,6 +106,8 @@ test('super admin can create a company with its own database and admin user', fu
 
     expect($tenant->primaryDomain())->toBe('empresa-nueva.localhost')
         ->and($tenant->radicado_prefix)->toBe('ENS')
+        ->and($tenant->databaseName())->toBe('pqrs_empresa_nueva')
+        ->and(file_exists(database_path('pqrs_empresa_nueva')))->toBeTrue()
         ->and($tenant->run(fn () => User::where('email', 'ana@empresa-nueva.test')->exists()))->toBeTrue();
 
     // El usuario de la empresa no existe en la base central.
@@ -296,16 +312,17 @@ test('admins assign pqrs to anyone and staff can only take unassigned ones', fun
     Notification::fake();
     $tenant = makeCompany('nu');
 
-    $this->post(portal($tenant, 'radicar'), validSubmission());
+    $sede = $tenant->run(fn () => makeSede('Neiva'));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $sede->id]));
     [$admin, $ana, $luis, $radicado] = $tenant->run(fn () => [
-        User::first(), makeStaff('ana'), makeStaff('luis'), Pqrs::sole()->radicado,
+        User::first(), makeStaff('ana', sedes: [$sede]), makeStaff('luis', sedes: [$sede]), Pqrs::sole()->radicado,
     ]);
     $url = portal($tenant, "admin/pqrs/{$radicado}/asignacion");
 
     $this->actingAs($admin)->patch($url, ['assigned_to' => $ana->id])->assertSessionHasNoErrors();
     Notification::assertSentTo($ana, PqrsAssignedNotification::class);
 
-    // Un funcionario no puede quitarle la solicitud a otro.
+    // Un agente no puede quitarle la solicitud a otro.
     $this->actingAs($luis)->patch($url, ['assigned_to' => $luis->id])->assertSessionHasErrors('assigned_to');
 
     // Sí puede soltar la suya, y otro puede tomarla.
@@ -327,9 +344,9 @@ test('only company admins manage users and deactivated staff cannot log in', fun
     $this->actingAs($pedro)->get(portal($tenant, 'admin/usuarios'))->assertForbidden();
 
     $this->actingAs($admin)->post(portal($tenant, 'admin/usuarios'), [
-        'name' => 'Nueva Funcionaria',
+        'name' => 'Nueva Agente',
         'email' => 'nueva@staff.test',
-        'role' => 'funcionario',
+        'role' => 'agente',
         'password' => 'password123',
     ])->assertSessionHasNoErrors();
 
@@ -337,14 +354,14 @@ test('only company admins manage users and deactivated staff cannot log in', fun
     $this->actingAs($admin)->put(portal($tenant, "admin/usuarios/{$admin->id}"), [
         'name' => $admin->name,
         'email' => $admin->email,
-        'role' => 'funcionario',
+        'role' => 'agente',
         'is_active' => true,
     ])->assertSessionHasErrors('role');
 
     $this->actingAs($admin)->put(portal($tenant, "admin/usuarios/{$pedro->id}"), [
         'name' => $pedro->name,
         'email' => $pedro->email,
-        'role' => 'funcionario',
+        'role' => 'agente',
         'is_active' => false,
     ])->assertSessionHasNoErrors();
 
@@ -353,7 +370,7 @@ test('only company admins manage users and deactivated staff cannot log in', fun
     $this->post(portal($tenant, 'admin/login'), ['email' => 'pedro@staff.test', 'password' => 'password'])
         ->assertSessionHasErrors('email');
 
-    expect($tenant->run(fn () => User::where('email', 'nueva@staff.test')->first()?->role))->toBe(UserRole::Funcionario);
+    expect($tenant->run(fn () => User::where('email', 'nueva@staff.test')->first()?->role))->toBe(UserRole::Agente);
 });
 
 test('staff emails are case-insensitive for uniqueness and login', function () {
@@ -364,14 +381,14 @@ test('staff emails are case-insensitive for uniqueness and login', function () {
     $this->actingAs($admin)->post(portal($tenant, 'admin/usuarios'), [
         'name' => 'Ana Duplicada',
         'email' => 'Ana@Staff.TEST',
-        'role' => 'funcionario',
+        'role' => 'agente',
         'password' => 'password123',
     ])->assertSessionHasErrors('email');
 
     $this->actingAs($admin)->post(portal($tenant, 'admin/usuarios'), [
         'name' => 'Luis Pérez',
         'email' => ' Luis.Perez@Staff.TEST ',
-        'role' => 'funcionario',
+        'role' => 'agente',
         'password' => 'password123',
     ])->assertSessionHasNoErrors();
 
@@ -398,10 +415,190 @@ test('changing a staff password closes that user sessions', function () {
     $this->actingAs($admin)->put(portal($tenant, "admin/usuarios/{$pedro->id}"), [
         'name' => $pedro->name,
         'email' => $pedro->email,
-        'role' => 'funcionario',
+        'role' => 'agente',
         'is_active' => true,
         'password' => 'NuevaClave123',
     ])->assertSessionHasNoErrors();
 
     expect($tenant->run(fn () => DB::table('sessions')->where('user_id', $pedro->id)->exists()))->toBeFalse();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Sedes y roles: Super Admin, Admin de Empresa y Agente
+|--------------------------------------------------------------------------
+*/
+
+test('the super admin database name must be valid and unused', function () {
+    $superAdmin = User::factory()->create();
+    makeCompany('omicron');
+
+    $payload = fn (array $overrides) => [
+        'name' => 'Otra Empresa',
+        'plan' => 'basico',
+        'subdomain' => 'otra-empresa',
+        'admin_name' => 'Admin',
+        'admin_email' => 'admin@otra.test',
+        'admin_password' => 'password123',
+        ...$overrides,
+    ];
+
+    // Formato inválido, nombre reservado y una base que ya usa otra empresa.
+    foreach (['Mi-Base', '1base', 'database', 'tenant_omicron'] as $name) {
+        $this->actingAs($superAdmin)
+            ->post(route('tenants.store'), $payload(['database' => $name]))
+            ->assertSessionHasErrors('database');
+    }
+
+    expect(Tenant::find('otra-empresa'))->toBeNull();
+});
+
+test('citizens must choose an active sede when the company has sedes', function () {
+    Notification::fake();
+    $tenant = makeCompany('pi');
+
+    // Sin sedes, el formulario no la pide.
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+
+    [$neiva, $cerrada] = $tenant->run(fn () => [makeSede('Neiva'), makeSede('Antigua', active: false)]);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasErrors('sede_id');
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $cerrada->id]))->assertSessionHasErrors('sede_id');
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]))->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::latest('id')->first()->sede_id))->toBe($neiva->id);
+});
+
+test('agents only see and manage pqrs from their own sedes', function () {
+    Notification::fake();
+    $tenant = makeCompany('rho');
+
+    [$neiva, $yopal] = $tenant->run(fn () => [makeSede('Neiva'), makeSede('Yopal')]);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id, 'subject' => 'Caso de Neiva']));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $yopal->id, 'subject' => 'Caso de Yopal']));
+
+    [$admin, $agente, $deNeiva, $deYopal] = $tenant->run(fn () => [
+        User::first(),
+        makeStaff('carla', sedes: [$neiva]),
+        Pqrs::where('sede_id', $neiva->id)->sole()->radicado,
+        Pqrs::where('sede_id', $yopal->id)->sole()->radicado,
+    ]);
+
+    // Bandeja y resumen: solo su sede. El administrador ve todo.
+    $this->actingAs($agente)->get(portal($tenant, 'admin/pqrs'))
+        ->assertInertia(fn ($page) => $page->where('pqrs.total', 1)->where('pqrs.data.0.radicado', $deNeiva));
+    $this->actingAs($agente)->get(portal($tenant, 'admin'))
+        ->assertInertia(fn ($page) => $page->where('stats.total', 1)->has('bySede', 1));
+    $this->actingAs($admin)->get(portal($tenant, 'admin/pqrs'))
+        ->assertInertia(fn ($page) => $page->where('pqrs.total', 2));
+    $this->actingAs($admin)->get(portal($tenant, 'admin'))
+        ->assertInertia(fn ($page) => $page->where('stats.total', 2)->has('bySede', 2));
+
+    // Ver, responder y anotar en su sede.
+    $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$deNeiva}"))->assertOk();
+    $this->actingAs($agente)->post(portal($tenant, "admin/pqrs/{$deNeiva}/actividades"), [
+        'type' => 'note', 'body' => 'Revisando con la sede.',
+    ])->assertSessionHasNoErrors();
+    $this->actingAs($agente)->post(portal($tenant, "admin/pqrs/{$deNeiva}/actividades"), [
+        'type' => 'response', 'body' => 'Su caso fue resuelto por la sede Neiva.',
+    ])->assertSessionHasNoErrors();
+
+    // La de otra sede «no existe» para él: ni verla ni tocarla.
+    $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$deYopal}"))->assertNotFound();
+    $this->actingAs($agente)->post(portal($tenant, "admin/pqrs/{$deYopal}/actividades"), [
+        'type' => 'note', 'body' => 'No debería poder.',
+    ])->assertNotFound();
+    $this->actingAs($agente)->patch(portal($tenant, "admin/pqrs/{$deYopal}/estado"), ['status' => 'en_tramite'])->assertNotFound();
+    $this->actingAs($agente)->patch(portal($tenant, "admin/pqrs/{$deYopal}/asignacion"), ['assigned_to' => $agente->id])->assertNotFound();
+    $this->actingAs($agente)->patch(portal($tenant, "admin/pqrs/{$deYopal}/sede"), ['sede_id' => $neiva->id])->assertNotFound();
+
+    // Y no administra sedes ni usuarios.
+    $this->actingAs($agente)->get(portal($tenant, 'admin/sedes'))->assertForbidden();
+    $this->actingAs($agente)->post(portal($tenant, 'admin/sedes'), ['name' => 'Pitalito'])->assertForbidden();
+
+    expect($tenant->run(fn () => Pqrs::where('radicado', $deYopal)->sole()->activities()->count()))->toBe(1);
+});
+
+test('an agent can move a pqrs to another sede and loses access to it', function () {
+    Notification::fake();
+    $tenant = makeCompany('sigma');
+
+    [$neiva, $yopal] = $tenant->run(fn () => [makeSede('Neiva'), makeSede('Yopal')]);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+
+    [$agente, $radicado] = $tenant->run(fn () => [makeStaff('carla', sedes: [$neiva]), Pqrs::sole()->radicado]);
+
+    // La toma y luego la traslada a Yopal, que no atiende.
+    $this->actingAs($agente)->patch(portal($tenant, "admin/pqrs/{$radicado}/asignacion"), ['assigned_to' => $agente->id]);
+    $this->actingAs($agente)
+        ->patch(portal($tenant, "admin/pqrs/{$radicado}/sede"), ['sede_id' => $yopal->id, 'reason' => 'El paciente se atiende en Yopal.'])
+        ->assertRedirect(portal($tenant, 'admin/pqrs'));
+
+    $pqrs = $tenant->run(fn () => Pqrs::sole()->load('activities'));
+
+    // Queda en Yopal, sin responsable (Carla no atiende Yopal) y con el traslado en el historial interno.
+    expect($pqrs->sede_id)->toBe($yopal->id)
+        ->and($pqrs->assigned_to)->toBeNull()
+        ->and($pqrs->activities->firstWhere('type', 'sede_changed')?->is_public)->toBeFalse();
+
+    $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$radicado}"))->assertNotFound();
+});
+
+test('the company admin assigns sedes and removing one releases the agent pqrs there', function () {
+    Notification::fake();
+    $tenant = makeCompany('tau');
+
+    [$neiva, $yopal] = $tenant->run(fn () => [makeSede('Neiva'), makeSede('Yopal')]);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $yopal->id]));
+
+    [$admin, $radicado] = $tenant->run(fn () => [User::first(), Pqrs::sole()->radicado]);
+
+    // Crea un agente con la sede Yopal.
+    $this->actingAs($admin)->post(portal($tenant, 'admin/usuarios'), [
+        'name' => 'Mario Agente',
+        'email' => 'mario@staff.test',
+        'role' => 'agente',
+        'sedes' => [$yopal->id],
+        'password' => 'password123',
+    ])->assertSessionHasNoErrors();
+
+    $mario = $tenant->run(fn () => User::where('email', 'mario@staff.test')->sole());
+
+    expect($tenant->run(fn () => $mario->sedes()->pluck('sedes.id')->all()))->toBe([$yopal->id]);
+
+    // Un agente sin la sede no puede ser responsable; con la sede, sí.
+    $otro = $tenant->run(fn () => makeStaff('nora', sedes: [$neiva]));
+    $assign = portal($tenant, "admin/pqrs/{$radicado}/asignacion");
+    $this->actingAs($admin)->patch($assign, ['assigned_to' => $otro->id])->assertSessionHasErrors('assigned_to');
+    $this->actingAs($admin)->patch($assign, ['assigned_to' => $mario->id])->assertSessionHasNoErrors();
+
+    // Le cambia Yopal por Neiva: la PQRS de Yopal queda sin responsable.
+    $this->actingAs($admin)->put(portal($tenant, "admin/usuarios/{$mario->id}"), [
+        'name' => $mario->name,
+        'email' => $mario->email,
+        'role' => 'agente',
+        'is_active' => true,
+        'sedes' => [$neiva->id],
+    ])->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::sole()->assigned_to))->toBeNull();
+
+    $this->actingAs($admin)->get(portal($tenant, 'admin/sedes'))
+        ->assertInertia(fn ($page) => $page->component('tenant/admin/sedes/index')->has('sedes', 2));
+});
+
+test('pqrs without a sede are only visible to the company admin', function () {
+    Notification::fake();
+    $tenant = makeCompany('upsilon');
+
+    // Radicada antes de que la empresa tuviera sedes.
+    $this->post(portal($tenant, 'radicar'), validSubmission());
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    [$admin, $agente, $radicado] = $tenant->run(fn () => [User::first(), makeStaff('carla', sedes: [$neiva]), Pqrs::sole()->radicado]);
+
+    $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$radicado}"))->assertNotFound();
+
+    // El administrador le asigna la sede y desde ahí el agente la ve.
+    $this->actingAs($admin)->patch(portal($tenant, "admin/pqrs/{$radicado}/sede"), ['sede_id' => $neiva->id])->assertSessionHasNoErrors();
+    $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$radicado}"))->assertOk();
 });

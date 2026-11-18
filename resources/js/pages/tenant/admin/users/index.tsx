@@ -24,12 +24,15 @@ import type { StaffUser } from '@/types';
 
 type RoleOption = { value: string; label: string; description: string };
 
+type SedeOption = { value: number; label: string };
+
 type Props = {
     users: StaffUser[];
     roles: RoleOption[];
+    sedes: SedeOption[];
 };
 
-export default function UsersIndex({ users, roles }: Props) {
+export default function UsersIndex({ users, roles, sedes }: Props) {
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState<StaffUser | null>(null);
 
@@ -40,7 +43,7 @@ export default function UsersIndex({ users, roles }: Props) {
             <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
                 <PageHeader
                     title="Usuarios"
-                    description="Funcionarios que atienden las PQRS de la empresa. Los usuarios se desactivan en lugar de borrarse, para conservar el historial."
+                    description="Administradores y agentes de la empresa. Cada agente solo ve las PQRS de sus sedes. Los usuarios se desactivan en lugar de borrarse, para conservar el historial."
                     actions={
                         <Button onClick={() => setCreating(true)}>
                             <UserPlus />
@@ -59,6 +62,9 @@ export default function UsersIndex({ users, roles }: Props) {
                                     </th>
                                     <th className="px-4 py-3 font-medium">
                                         Rol
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
+                                        Sedes
                                     </th>
                                     <th className="px-4 py-3 font-medium">
                                         Estado
@@ -96,6 +102,22 @@ export default function UsersIndex({ users, roles }: Props) {
                                             >
                                                 {u.role_label}
                                             </Badge>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {u.role === 'admin' ? (
+                                                <span className="text-muted-foreground">
+                                                    Todas
+                                                </span>
+                                            ) : u.sedes.length > 0 ? (
+                                                u.sedes
+                                                    .map((s) => s.name)
+                                                    .join(', ')
+                                            ) : (
+                                                <span className="text-xs text-amber-600">
+                                                    Sin sedes: no ve ninguna
+                                                    PQRS
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3">
                                             {u.is_active ? (
@@ -137,7 +159,7 @@ export default function UsersIndex({ users, roles }: Props) {
                 <DialogContent>
                     <DialogTitle>Nuevo usuario</DialogTitle>
                     <DialogDescription>
-                        Comparte la contraseña inicial con el funcionario por un
+                        Comparte la contraseña inicial con el usuario por un
                         medio seguro.
                     </DialogDescription>
                     <Form
@@ -149,7 +171,11 @@ export default function UsersIndex({ users, roles }: Props) {
                     >
                         {({ processing, errors }) => (
                             <>
-                                <UserFields roles={roles} errors={errors} />
+                                <UserFields
+                                    roles={roles}
+                                    sedes={sedes}
+                                    errors={errors}
+                                />
                                 <div className="grid gap-2">
                                     <Label htmlFor="new-password">
                                         Contraseña inicial
@@ -204,6 +230,7 @@ export default function UsersIndex({ users, roles }: Props) {
                                     <>
                                         <UserFields
                                             roles={roles}
+                                            sedes={sedes}
                                             errors={errors}
                                             user={editing}
                                         />
@@ -282,14 +309,20 @@ export default function UsersIndex({ users, roles }: Props) {
 
 function UserFields({
     roles,
+    sedes,
     errors,
     user,
 }: {
     roles: RoleOption[];
+    sedes: SedeOption[];
     errors: Partial<Record<string, string>>;
     user?: StaffUser;
 }) {
-    const [role, setRole] = useState(user?.role ?? 'funcionario');
+    const [role, setRole] = useState(user?.role ?? 'agente');
+    const userSedes = new Set(user?.sedes.map((s) => s.id) ?? []);
+    const sedeError = Object.entries(errors).find(([k]) =>
+        k.startsWith('sedes'),
+    )?.[1];
 
     return (
         <>
@@ -337,6 +370,40 @@ function UserFields({
                 </p>
                 <InputError message={errors.role} />
             </div>
+            {role === 'agente' && (
+                <fieldset className="grid gap-2">
+                    <legend className="mb-2 text-sm font-medium">
+                        Sedes que atiende
+                    </legend>
+                    {sedes.length === 0 ? (
+                        <p className="text-xs text-amber-600">
+                            Primero crea las sedes de la empresa en «Sedes».
+                        </p>
+                    ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {sedes.map((s) => (
+                                <label
+                                    key={s.value}
+                                    className="flex items-center gap-2 text-sm"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        name="sedes[]"
+                                        value={s.value}
+                                        defaultChecked={userSedes.has(s.value)}
+                                        className="size-4"
+                                    />
+                                    {s.label}
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                        Solo verá y gestionará las PQRS de estas sedes.
+                    </p>
+                    <InputError message={sedeError} />
+                </fieldset>
+            )}
         </>
     );
 }

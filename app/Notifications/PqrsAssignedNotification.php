@@ -11,7 +11,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Aviso al funcionario cuando le asignan una PQRS.
+ * Aviso al agente o administrador cuando le asignan una PQRS.
  */
 class PqrsAssignedNotification extends Notification implements ShouldQueue
 {

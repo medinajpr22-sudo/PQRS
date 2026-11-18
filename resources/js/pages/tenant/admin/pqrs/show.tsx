@@ -5,6 +5,7 @@ import {
     FileText,
     Lock,
     Mail,
+    MapPin,
     MessageSquareReply,
     Paperclip,
     Phone,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import PqrsActivityController from '@/actions/App/Http/Controllers/Tenant/Admin/PqrsActivityController';
+import PqrsController from '@/actions/App/Http/Controllers/Tenant/Admin/PqrsController';
 import InputError from '@/components/input-error';
 import { DueDate } from '@/components/pqrs/due-date';
 import { OverdueBadge, StatusBadge } from '@/components/pqrs/status-badge';
@@ -36,6 +38,7 @@ import { cn } from '@/lib/utils';
 import admin from '@/routes/tenant/admin';
 import type {
     AttachmentItem,
+    Option,
     PqrsActivityItem,
     PqrsListItem,
     StaffOption,
@@ -65,6 +68,7 @@ type Props = {
     transitions: StatusTransition[];
     staff: StaffOption[];
     canAssignOthers: boolean;
+    sedes: { value: number; label: string }[];
 };
 
 const ACTIVITY: Record<
@@ -99,6 +103,12 @@ const ACTIVITY: Record<
         className:
             'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
     },
+    sede_changed: {
+        label: 'Traslado de sede',
+        icon: MapPin,
+        className:
+            'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+    },
 };
 
 export default function PqrsShow({
@@ -106,6 +116,7 @@ export default function PqrsShow({
     transitions,
     staff,
     canAssignOthers,
+    sedes,
 }: Props) {
     const { auth, errors } = usePage().props;
     // Si el responsable actual fue desactivado, igual debe aparecer en la lista.
@@ -511,6 +522,30 @@ export default function PqrsShow({
                     <div className="space-y-6">
                         <Card>
                             <CardHeader>
+                                <CardTitle>Sede</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3 text-sm">
+                                <p className="flex items-center gap-2 font-medium">
+                                    <MapPin className="size-4 text-muted-foreground" />
+                                    {pqrs.sede?.name ?? 'Sin sede'}
+                                </p>
+                                <SedeTransfer
+                                    radicado={pqrs.radicado}
+                                    options={sedes
+                                        .filter(
+                                            (s) => s.value !== pqrs.sede?.id,
+                                        )
+                                        .map((s) => ({
+                                            value: String(s.value),
+                                            label: s.label,
+                                        }))}
+                                    hasSede={pqrs.sede !== null}
+                                />
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
                                 <CardTitle>Responsable</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-3 text-sm">
@@ -757,3 +792,79 @@ PqrsShow.layout = {
         { title: 'Solicitudes', href: admin.pqrs.index() },
     ],
 };
+
+/**
+ * Trasladar la PQRS a otra sede (p. ej. el paciente eligió la equivocada).
+ */
+function SedeTransfer({
+    radicado,
+    options,
+    hasSede,
+}: {
+    radicado: string;
+    options: Option[];
+    hasSede: boolean;
+}) {
+    const [open, setOpen] = useState(false);
+
+    if (options.length === 0) {
+        return null;
+    }
+
+    if (!open) {
+        return (
+            <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+                {hasSede ? 'Trasladar a otra sede' : 'Asignar una sede'}
+            </Button>
+        );
+    }
+
+    return (
+        <Form
+            {...PqrsController.changeSede.form(radicado)}
+            options={{ preserveScroll: true }}
+            onSuccess={() => setOpen(false)}
+            className="space-y-3"
+        >
+            {({ processing, errors }) => (
+                <>
+                    <NativeSelect name="sede_id" required defaultValue="">
+                        <option value="" disabled>
+                            Elige la sede…
+                        </option>
+                        {options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                                {o.label}
+                            </option>
+                        ))}
+                    </NativeSelect>
+                    <InputError message={errors.sede_id} />
+                    <Textarea
+                        name="reason"
+                        rows={2}
+                        placeholder="Motivo (opcional). Ej.: el paciente se atiende en Yopal."
+                    />
+                    <InputError message={errors.reason} />
+                    <p className="text-xs text-muted-foreground">
+                        Si el responsable no atiende la nueva sede, la solicitud
+                        queda sin responsable.
+                    </p>
+                    <div className="flex gap-2">
+                        <Button type="submit" size="sm" disabled={processing}>
+                            {processing && <Spinner />}
+                            Trasladar
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOpen(false)}
+                        >
+                            Cancelar
+                        </Button>
+                    </div>
+                </>
+            )}
+        </Form>
+    );
+}

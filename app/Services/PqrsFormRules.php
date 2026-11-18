@@ -21,9 +21,11 @@ class PqrsFormRules
 
     /**
      * @param  array<string, mixed>  $schema
+     * @param  list<int>  $sedeIds  Sedes activas de la empresa. Si tiene alguna,
+     *                              el ciudadano debe elegir una.
      * @return array<string, mixed>
      */
-    public static function rules(array $schema): array
+    public static function rules(array $schema, array $sedeIds = []): array
     {
         $enabledTypes = collect($schema['types'])->where('enabled', true)->pluck('key')->all();
 
@@ -38,6 +40,10 @@ class PqrsFormRules
             'description' => ['required', 'string', 'min:20', 'max:5000'],
             'privacy' => ['accepted'],
         ];
+
+        if ($sedeIds !== []) {
+            $rules['sede_id'] = ['required', 'integer', Rule::in($sedeIds)];
+        }
 
         foreach ($schema['fields'] as $field) {
             $rules['fields.'.$field['key']] = self::fieldRules($field);
@@ -65,6 +71,7 @@ class PqrsFormRules
     {
         $attributes = [
             'type' => 'tipo de solicitud',
+            'sede_id' => 'sede',
             'requester_name' => 'nombre completo',
             'requester_email' => 'correo electrónico',
             'requester_phone' => 'teléfono',

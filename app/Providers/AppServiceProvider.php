@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\Pqrs;
 use App\Models\User;
+use App\Policies\PqrsPolicy;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -38,7 +40,12 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureGates(): void
     {
+        // Solo el administrador de empresa gestiona usuarios y sedes.
         Gate::define('manage-users', fn (User $user) => $user->isAdmin());
+        Gate::define('manage-sedes', fn (User $user) => $user->isAdmin());
+
+        // Un agente solo ve las PQRS de sus sedes.
+        Gate::policy(Pqrs::class, PqrsPolicy::class);
     }
 
     /**

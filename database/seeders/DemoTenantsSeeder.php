@@ -6,6 +6,7 @@ use App\Enums\PqrsStatus;
 use App\Enums\UserRole;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
+use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\TenantProvisioner;
@@ -14,7 +15,10 @@ use App\Support\TenantDefaults;
 use Illuminate\Database\Seeder;
 
 /**
- * Tres empresas de ejemplo, cada una con su propio diseño y formulario.
+ * Tres empresas de ejemplo, cada una con su propio diseño, formulario y sedes.
+ *
+ * En cada empresa hay un administrador (ve todas las sedes) y un agente que
+ * solo atiende la primera sede, para probar la visibilidad por sede.
  */
 class DemoTenantsSeeder extends Seeder
 {
@@ -34,38 +38,50 @@ class DemoTenantsSeeder extends Seeder
             ]);
 
             $tenant->run(function () use ($tenant, $company) {
-                // Un funcionario de ejemplo para probar roles y asignaciones.
-                $staff = new User([
-                    'name' => 'Funcionario '.$company['short'],
-                    'email' => "funcionario@{$company['id']}.test",
+                $sedes = collect($company['sedes'])
+                    ->map(fn (string $name) => Sede::create(['name' => $name, 'is_active' => true]))
+                    ->values();
+
+                // Un agente de ejemplo que solo atiende la primera sede.
+                $agent = new User([
+                    'name' => 'Agente '.$company['short'],
+                    'email' => "agente@{$company['id']}.test",
                     'password' => 'Admin123*',
                 ]);
-                $staff->forceFill([
-                    'role' => UserRole::Funcionario,
+                $agent->forceFill([
+                    'role' => UserRole::Agente,
                     'is_active' => true,
                     'email_verified_at' => now(),
                 ])->save();
+                $agent->sedes()->sync([$sedes->first()->id]);
 
-                $this->seedRequests($tenant, $company['samples']);
+                $this->seedRequests($tenant, $company['samples'], $sedes->all());
             });
         }
     }
 
     /**
      * @param  list<array<string, mixed>>  $samples
+     * @param  list<Sede>  $sedes
      */
-    protected function seedRequests(Tenant $tenant, array $samples): void
+    protected function seedRequests(Tenant $tenant, array $samples, array $sedes): void
     {
         $agent = User::first();
         $schema = $tenant->resolvedFormSchema();
+        $sedeByName = collect($sedes)->keyBy('name');
 
         foreach ($samples as $i => $sample) {
+            // La sede sale de la ciudad o sede del ejemplo; si no tiene, se reparte.
+            $sede = $sedeByName->get($sample['extra']['sede'] ?? $sample['extra']['ciudad'] ?? '')
+                ?? $sedes[$i % count($sedes)];
+
             $created = now()->subDays($sample['days_ago'])->setTime(9 + $i % 8, 15 * ($i % 4));
             $sla = collect($schema['types'])->firstWhere('key', $sample['type'])['sla_days'] ?? 15;
 
             $pqrs = Pqrs::create([
                 'radicado' => sprintf('%s-%d-%05d', $tenant->radicado_prefix, $created->year, $i + 1),
                 'type' => $sample['type'],
+                'sede_id' => $sede->id,
                 'status' => $sample['status'],
                 'requester_name' => $sample['name'],
                 'requester_document_type' => 'CC',
@@ -132,6 +148,7 @@ class DemoTenantsSeeder extends Seeder
             [
                 'id' => 'andina',
                 'short' => 'Andina',
+                'sedes' => ['Bogotá', 'Medellín', 'Cali'],
                 'name' => 'Aseguradora Andina S.A.',
                 'nit' => '900.123.456-7',
                 'email' => 'servicioalcliente@andina.test',
@@ -174,6 +191,7 @@ class DemoTenantsSeeder extends Seeder
             [
                 'id' => 'santalucia',
                 'short' => 'Santa Lucía',
+                'sedes' => ['Sede Norte', 'Sede Centro', 'Sede Sur'],
                 'name' => 'Clínica Santa Lucía',
                 'nit' => '800.555.321-1',
                 'email' => 'atencionalusuario@santalucia.test',
@@ -194,7 +212,6 @@ class DemoTenantsSeeder extends Seeder
                         'queja' => ['sla_days' => 10],
                     ]),
                     'fields' => [
-                        ['key' => 'sede', 'label' => 'Sede de atención', 'type' => 'select', 'required' => true, 'placeholder' => '', 'help' => '', 'width' => 'half', 'options' => ['Sede Norte', 'Sede Centro', 'Sede Sur']],
                         ['key' => 'fecha_atencion', 'label' => 'Fecha de la atención', 'type' => 'date', 'required' => false, 'placeholder' => '', 'help' => '', 'width' => 'half', 'options' => []],
                         ['key' => 'servicio', 'label' => 'Servicio', 'type' => 'radio', 'required' => true, 'placeholder' => '', 'help' => '', 'width' => 'full', 'options' => ['Urgencias', 'Consulta externa', 'Hospitalización', 'Laboratorio clínico', 'Imágenes diagnósticas']],
                         ['key' => 'eps', 'label' => 'EPS', 'type' => 'text', 'required' => false, 'placeholder' => 'Ej: Sura, Sanitas, Nueva EPS', 'help' => '', 'width' => 'half', 'options' => []],
@@ -215,6 +232,7 @@ class DemoTenantsSeeder extends Seeder
             [
                 'id' => 'aguasdelvalle',
                 'short' => 'Aguas del Valle',
+                'sedes' => ['Cali', 'Palmira'],
                 'name' => 'Aguas del Valle E.S.P.',
                 'nit' => '890.300.111-2',
                 'email' => 'pqr@aguasdelvalle.test',

@@ -64,6 +64,7 @@ class PqrsTrackingController extends Controller
             'pqrs' => [
                 'radicado' => $pqrs->radicado,
                 'type' => $type['label'] ?? $pqrs->type,
+                'sede' => $pqrs->sede?->name,
                 'status' => $pqrs->status->value,
                 'status_label' => $pqrs->status->label(),
                 'subject' => $pqrs->subject,

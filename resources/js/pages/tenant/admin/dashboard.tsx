@@ -36,6 +36,13 @@ type Props = {
     };
     byType: { key: string; label: string; total: number }[];
     byStatus: { key: PqrsStatus; label: string; total: number }[];
+    bySede: {
+        id: number | null;
+        name: string;
+        total: number;
+        open: number;
+        overdue: number;
+    }[];
     urgent: PqrsListItem[];
 };
 
@@ -43,6 +50,7 @@ export default function TenantDashboard({
     stats,
     byType,
     byStatus,
+    bySede,
     urgent,
 }: Props) {
     return (
@@ -213,6 +221,71 @@ export default function TenantDashboard({
                         </Card>
                     </div>
                 </div>
+
+                {bySede.length > 0 && (
+                    <Card className="gap-0 py-0">
+                        <CardHeader className="py-4">
+                            <CardTitle>Por sede</CardTitle>
+                            <CardDescription>
+                                Solo las sedes que puedes ver.
+                            </CardDescription>
+                        </CardHeader>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
+                                    <tr>
+                                        <th className="px-4 py-3 font-medium">
+                                            Sede
+                                        </th>
+                                        <th className="px-4 py-3 font-medium">
+                                            Abiertas
+                                        </th>
+                                        <th className="px-4 py-3 font-medium">
+                                            Vencidas
+                                        </th>
+                                        <th className="px-4 py-3 font-medium">
+                                            Total
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {bySede.map((s) => (
+                                        <tr key={s.id ?? 'none'}>
+                                            <td className="px-4 py-3">
+                                                <Link
+                                                    href={admin.pqrs.index({
+                                                        query: {
+                                                            sede:
+                                                                s.id ?? 'none',
+                                                        },
+                                                    })}
+                                                    className="font-medium hover:underline"
+                                                >
+                                                    {s.name}
+                                                </Link>
+                                            </td>
+                                            <td className="px-4 py-3 tabular-nums">
+                                                {formatNumber(s.open)}
+                                            </td>
+                                            <td
+                                                className={
+                                                    s.overdue > 0
+                                                        ? 'px-4 py-3 font-medium text-red-600 tabular-nums'
+                                                        : 'px-4 py-3 tabular-nums'
+                                                }
+                                            >
+                                                {formatNumber(s.overdue)}
+                                            </td>
+                                            <td className="px-4 py-3 tabular-nums">
+                                                {formatNumber(s.total)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                )}
             </div>
         </>
     );

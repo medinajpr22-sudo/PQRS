@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Sede;
 use App\Models\Tenant;
 use App\Services\PqrsFormRules;
 use App\Services\PqrsService;
@@ -30,6 +31,9 @@ class PqrsSubmissionController extends Controller
                 'mimes' => config('pqrs.attachments.mimes'),
             ],
             'initialType' => $request->query('tipo'),
+            // Si la empresa tiene sedes, el ciudadano elige a cuál dirige su solicitud.
+            'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),
         ]);
     }
 
@@ -40,7 +44,7 @@ class PqrsSubmissionController extends Controller
         $schema = $tenant->resolvedFormSchema();
 
         $data = $request->validate(
-            PqrsFormRules::rules($schema),
+            PqrsFormRules::rules($schema, array_values(array_map('intval', Sede::active()->pluck('id')->all()))),
             [],
             PqrsFormRules::attributes($schema),
         );
@@ -55,6 +59,7 @@ class PqrsSubmissionController extends Controller
         $request->session()->flash('pqrs_receipt', [
             'radicado' => $pqrs->radicado,
             'type' => $type['label'] ?? $pqrs->type,
+            'sede' => $pqrs->sede?->name,
             'subject' => $pqrs->subject,
             'email' => $pqrs->requester_email,
             'created_at' => $pqrs->created_at,

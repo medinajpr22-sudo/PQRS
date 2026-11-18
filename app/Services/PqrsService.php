@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\PqrsStatus;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
+use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\PqrsAssignedNotification;
@@ -49,6 +50,7 @@ class PqrsService
             $pqrs = Pqrs::create([
                 'radicado' => $this->nextRadicado($tenant),
                 'type' => $data['type'],
+                'sede_id' => $data['sede_id'] ?? null,
                 'status' => PqrsStatus::Radicada,
                 'channel' => 'web',
                 'requester_name' => $data['requester_name'],
@@ -81,7 +83,7 @@ class PqrsService
     }
 
     /**
-     * Cambio de estado hecho a mano por un funcionario.
+     * Cambio de estado hecho a mano por el personal.
      *
      * Solo se permiten los cambios definidos en PqrsStatus::manualTransitions().
      * Reabrir o cerrar sin respuesta exige un motivo.
@@ -161,10 +163,10 @@ class PqrsService
     }
 
     /**
-     * Asigna (o quita) el funcionario responsable de una PQRS.
+     * Asigna (o quita) el responsable de una PQRS.
      *
-     * Un administrador puede asignar a cualquiera. Un funcionario solo puede
-     * tomar una solicitud libre o soltar la suya.
+     * Un administrador puede asignar a cualquiera que tenga acceso a la sede
+     * de la PQRS. Un agente solo puede tomar una solicitud libre o soltar la suya.
      */
     public function assign(Tenant $tenant, Pqrs $pqrs, ?User $assignee, User $by): void
     {
@@ -180,14 +182,20 @@ class PqrsService
 
             if (! $takingFree && ! $releasingOwn) {
                 throw ValidationException::withMessages([
-                    'assigned_to' => 'Solo un administrador puede asignar o reasignar solicitudes de otros funcionarios.',
+                    'assigned_to' => 'Solo un administrador puede asignar o reasignar solicitudes de otros agentes.',
                 ]);
             }
         }
 
         if ($assignee !== null && ! $assignee->is_active) {
             throw ValidationException::withMessages([
-                'assigned_to' => 'Ese funcionario está desactivado.',
+                'assigned_to' => 'Ese usuario está desactivado.',
+            ]);
+        }
+
+        if ($assignee !== null && ! $assignee->canAccessSede($pqrs->sede_id)) {
+            throw ValidationException::withMessages([
+                'assigned_to' => "{$assignee->name} no tiene acceso a la sede de esta solicitud.",
             ]);
         }
 
@@ -213,6 +221,109 @@ class PqrsService
         if ($assignee !== null && $assignee->id !== $by->id) {
             $this->safely(fn () => $assignee->notify(new PqrsAssignedNotification($pqrs, $tenant, $by)));
         }
+    }
+
+    /**
+     * Traslada la PQRS a otra sede (p. ej. el paciente se equivocó al radicar).
+     *
+     * Lo puede hacer el administrador o cualquier agente que vea la PQRS, hacia
+     * cualquier sede activa de la empresa, aunque él no la tenga asignada (en
+     * ese caso deja de verla). Si el responsable actual no tiene acceso a la
+     * nueva sede, la solicitud queda sin responsable.
+     */
+    public function changeSede(Pqrs $pqrs, Sede $sede, User $by, ?string $reason = null): void
+    {
+        $from = $pqrs->sede;
+
+        if ($from?->id === $sede->id) {
+            return;
+        }
+
+        if (! $sede->is_active) {
+            throw ValidationException::withMessages([
+                'sede_id' => "La sede «{$sede->name}» está desactivada.",
+            ]);
+        }
+
+        $reason = filled($reason) ? trim((string) $reason) : null;
+
+        $body = $from === null
+            ? "Solicitud asignada a la sede «{$sede->name}»."
+            : "Solicitud trasladada de la sede «{$from->name}» a «{$sede->name}».";
+
+        if ($reason !== null) {
+            $body .= "\nMotivo: {$reason}";
+        }
+
+        DB::transaction(function () use ($pqrs, $sede, $from, $by, $body, $reason) {
+            $pqrs->forceFill(['sede_id' => $sede->id])->save();
+            $pqrs->setRelation('sede', $sede);
+
+            $pqrs->activities()->create([
+                'user_id' => $by->id,
+                'type' => PqrsActivity::TYPE_SEDE,
+                'body' => $body,
+                'is_public' => false,
+                'meta' => ['from' => $from?->id, 'to' => $sede->id, 'reason' => $reason],
+            ]);
+
+            $assignee = $pqrs->assignee;
+
+            if ($assignee !== null && ! $assignee->canAccessSede($sede->id)) {
+                $this->unassign($pqrs, $by, "Se quitó la asignación a {$assignee->name}: no tiene acceso a la sede «{$sede->name}».");
+            }
+        });
+    }
+
+    /**
+     * Quita a un usuario de las PQRS abiertas que ya no puede ver (p. ej. un
+     * agente al que le quitaron una sede, o un administrador que pasó a agente).
+     *
+     * @return int Cuántas solicitudes quedaron sin responsable
+     */
+    public function releaseInaccessibleAssignments(User $user, User $by): int
+    {
+        $user->unsetRelation('sedes');
+        $ids = $user->accessibleSedeIds();
+
+        if ($ids === null) {
+            return 0;
+        }
+
+        $lost = Pqrs::open()
+            ->with('sede')
+            ->where('assigned_to', $user->id)
+            ->where(fn ($q) => $q->whereNull('sede_id')->orWhereNotIn('sede_id', $ids))
+            ->get();
+
+        foreach ($lost as $pqrs) {
+            $sede = $pqrs->sede?->name;
+
+            $this->unassign($pqrs, $by, $sede === null
+                ? "Se quitó la asignación a {$user->name}: la solicitud no tiene sede y solo la ven los administradores."
+                : "Se quitó la asignación a {$user->name}: ya no tiene acceso a la sede «{$sede}».");
+        }
+
+        return $lost->count();
+    }
+
+    /**
+     * Deja la PQRS sin responsable y lo registra en el historial interno.
+     */
+    protected function unassign(Pqrs $pqrs, User $by, string $body): void
+    {
+        $previous = $pqrs->assigned_to;
+
+        $pqrs->forceFill(['assigned_to' => null])->save();
+        $pqrs->setRelation('assignee', null);
+
+        $pqrs->activities()->create([
+            'user_id' => $by->id,
+            'type' => PqrsActivity::TYPE_ASSIGNED,
+            'body' => $body,
+            'is_public' => false,
+            'meta' => ['from' => $previous, 'to' => null],
+        ]);
     }
 
     /**

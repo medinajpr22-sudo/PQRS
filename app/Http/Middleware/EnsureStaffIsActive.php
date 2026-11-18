@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Si un administrador desactiva a un funcionario, este pierde el acceso
+ * Si el administrador de empresa desactiva a un usuario, este pierde el acceso
  * de inmediato, aunque tuviera una sesión abierta.
  */
 class EnsureStaffIsActive

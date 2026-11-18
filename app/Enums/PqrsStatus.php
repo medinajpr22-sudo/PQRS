@@ -25,7 +25,7 @@ enum PqrsStatus: string
     }
 
     /**
-     * Estados a los que un funcionario puede pasar la solicitud a mano.
+     * Estados a los que el personal puede pasar la solicitud a mano.
      *
      * «Respondida» no está aquí a propósito: solo se llega enviando una
      * respuesta, para que siempre quede la fecha y se notifique al ciudadano.

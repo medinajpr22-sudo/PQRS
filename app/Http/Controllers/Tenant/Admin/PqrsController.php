@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\PqrsAttachment;
+use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\PqrsFormRules;
@@ -31,14 +32,21 @@ class PqrsController extends Controller
             'status' => $request->query('status'),
             'type' => $request->query('type'),
             'overdue' => $request->boolean('overdue'),
-            // "me" = Mis PQRS, "none" = sin responsable, o el id de un funcionario
+            // "me" = Mis PQRS, "none" = sin responsable, o el id de un usuario
             'assigned' => is_string($request->query('assigned')) ? $request->query('assigned') : null,
+            // id de una sede, o "none" = sin sede (solo administradores)
+            'sede' => is_string($request->query('sede')) ? $request->query('sede') : null,
         ];
 
         $assigned = (string) $filters['assigned'];
+        $sede = (string) $filters['sede'];
+        $user = $request->user();
 
         $pqrs = Pqrs::query()
-            ->with('assignee:id,name')
+            ->visibleTo($user)
+            ->with(['assignee:id,name', 'sede:id,name'])
+            ->when(ctype_digit($sede), fn ($q) => $q->where('sede_id', (int) $sede))
+            ->when($sede === 'none', fn ($q) => $q->whereNull('sede_id'))
             ->when($assigned === 'me', fn ($q) => $q->where('assigned_to', $request->user()->id))
             ->when($assigned === 'none', fn ($q) => $q->whereNull('assigned_to'))
             ->when(ctype_digit($assigned), fn ($q) => $q->where('assigned_to', (int) $assigned))
@@ -62,6 +70,7 @@ class PqrsController extends Controller
             'statuses' => PqrsStatus::options(),
             'types' => $types->map(fn ($t) => ['value' => $t['key'], 'label' => $t['label']])->values(),
             'staff' => self::staffOptions(),
+            'sedes' => self::sedeFilterOptions($user),
         ]);
     }
 
@@ -71,7 +80,7 @@ class PqrsController extends Controller
         $tenant = tenant();
         $types = collect($tenant->resolvedFormSchema()['types'])->keyBy('key');
 
-        $pqrs->load(['activities.user', 'activities.attachments', 'attachments', 'assignee']);
+        $pqrs->load(['activities.user', 'activities.attachments', 'attachments', 'assignee', 'sede']);
 
         // Adjuntos enviados por el ciudadano al radicar.
         $createdActivityId = $pqrs->activities->firstWhere('type', PqrsActivity::TYPE_CREATED)?->id;
@@ -106,8 +115,12 @@ class PqrsController extends Controller
             ],
             // Solo los cambios de estado permitidos desde el estado actual.
             'transitions' => $pqrs->status->transitionOptions(),
-            'staff' => self::staffOptions(),
+            // Solo quienes pueden ver la sede de esta PQRS pueden ser responsables.
+            'staff' => self::assignableStaff($pqrs->sede_id),
             'canAssignOthers' => $request->user()->isAdmin(),
+            // Cualquier sede activa: si el paciente se equivocó, se traslada.
+            'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),
         ]);
     }
 
@@ -126,17 +139,17 @@ class PqrsController extends Controller
     }
 
     /**
-     * Asigna la PQRS a un funcionario (o le quita el responsable).
+     * Asigna la PQRS a un responsable (o se lo quita).
      */
     public function assign(Request $request, Pqrs $pqrs, PqrsService $service): RedirectResponse
     {
         $data = $request->validate([
             'assigned_to' => ['nullable', 'integer', Rule::exists('users', 'id')],
-        ], [], ['assigned_to' => 'funcionario']);
+        ], [], ['assigned_to' => 'responsable']);
 
         /** @var Tenant $tenant */
         $tenant = tenant();
-        $assignee = isset($data['assigned_to']) ? User::find($data['assigned_to']) : null;
+        $assignee = isset($data['assigned_to']) ? User::find((int) $data['assigned_to']) : null;
 
         $service->assign($tenant, $pqrs, $assignee, $request->user());
 
@@ -149,7 +162,37 @@ class PqrsController extends Controller
     }
 
     /**
-     * Funcionarios activos para asignar o filtrar.
+     * Traslada la PQRS a otra sede (p. ej. el paciente eligió la sede equivocada).
+     */
+    public function changeSede(Request $request, Pqrs $pqrs, PqrsService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'sede_id' => ['required', 'integer', Rule::exists('sedes', 'id')],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ], [], ['sede_id' => 'sede', 'reason' => 'motivo']);
+
+        $sede = Sede::findOrFail((int) $data['sede_id']);
+        $user = $request->user();
+
+        $service->changeSede($pqrs, $sede, $user, $data['reason'] ?? null);
+
+        // Si la trasladó a una sede que no atiende, ya no puede verla.
+        if (! $user->canAccessSede($sede->id)) {
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => "Solicitud {$pqrs->radicado} trasladada a {$sede->name}. Ya no la ves porque no atiendes esa sede.",
+            ]);
+
+            return to_route('tenant.admin.pqrs.index');
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "Solicitud trasladada a {$sede->name}."]);
+
+        return back();
+    }
+
+    /**
+     * Usuarios activos, para filtrar la bandeja por responsable.
      *
      * @return Collection<int, array{value: int, label: string}>
      */
@@ -159,6 +202,49 @@ class PqrsController extends Controller
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn (User $u) => ['value' => $u->id, 'label' => $u->name]);
+    }
+
+    /**
+     * Usuarios activos que pueden ser responsables de una PQRS de esta sede:
+     * los administradores y los agentes que atienden la sede.
+     *
+     * @return Collection<int, array{value: int, label: string}>
+     */
+    public static function assignableStaff(?int $sedeId): Collection
+    {
+        return User::where('is_active', true)
+            ->with('sedes:id')
+            ->orderBy('name')
+            ->get(['id', 'name', 'role'])
+            ->filter(fn (User $u) => $u->canAccessSede($sedeId))
+            ->map(fn (User $u) => ['value' => $u->id, 'label' => $u->name])
+            ->values();
+    }
+
+    /**
+     * Sedes para filtrar la bandeja: todas (y «sin sede») para el
+     * administrador; solo las suyas para un agente.
+     *
+     * @return Collection<int, array{value: string, label: string}>
+     */
+    public static function sedeFilterOptions(User $user): Collection
+    {
+        $ids = $user->accessibleSedeIds();
+
+        $options = Sede::query()
+            ->when($ids !== null, fn ($q) => $q->whereIn('id', $ids))
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_active'])
+            ->map(fn (Sede $s) => [
+                'value' => (string) $s->id,
+                'label' => $s->is_active ? $s->name : "{$s->name} (inactiva)",
+            ]);
+
+        if ($ids === null && Pqrs::whereNull('sede_id')->exists()) {
+            $options->push(['value' => 'none', 'label' => 'Sin sede']);
+        }
+
+        return $options->values();
     }
 
     /**
@@ -181,6 +267,7 @@ class PqrsController extends Controller
             'due_at' => $pqrs->due_at,
             'is_overdue' => $pqrs->isOverdue(),
             'assignee' => $pqrs->assignee?->only(['id', 'name']),
+            'sede' => $pqrs->sede?->only(['id', 'name']),
         ];
     }
 

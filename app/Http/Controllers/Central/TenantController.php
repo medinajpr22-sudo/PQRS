@@ -137,6 +137,7 @@ class TenantController extends Controller
             'status' => $tenant->status,
             'plan' => $tenant->plan,
             'radicado_prefix' => $tenant->radicado_prefix,
+            'database' => $tenant->databaseName(),
             'domains' => $tenant->domains->pluck('domain')->values(),
             'portal_url' => $tenant->portalUrl(),
             'logo_url' => $theme['logo_url'],

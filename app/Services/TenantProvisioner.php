@@ -7,6 +7,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Support\TenantDefaults;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -25,6 +26,7 @@ class TenantProvisioner
      *     plan?: string,
      *     radicado_prefix?: string|null,
      *     domain: string,
+     *     database?: string|null,
      *     theme?: array<string, mixed>,
      *     form_schema?: array<string, mixed>,
      *     admin_name: string,
@@ -34,8 +36,7 @@ class TenantProvisioner
      */
     public function create(array $data): Tenant
     {
-        // Al crear el tenant, stancl/tenancy crea y migra su base de datos (TenancyServiceProvider).
-        $tenant = Tenant::create([
+        $attributes = [
             'id' => $data['id'],
             'name' => $data['name'],
             'nit' => $data['nit'] ?? null,
@@ -46,9 +47,28 @@ class TenantProvisioner
             'radicado_prefix' => Str::upper($data['radicado_prefix'] ?? '') ?: self::defaultPrefix($data['name']),
             'theme' => array_merge(TenantDefaults::theme($data['name']), $data['theme'] ?? []),
             'form_schema' => TenantDefaults::mergeFormSchema($data['form_schema'] ?? null),
-        ]);
+        ];
+
+        // Nombre de la base de datos que definió el super administrador. Si no
+        // se indica, stancl/tenancy usa «tenant_<id>».
+        if (filled($data['database'] ?? null)) {
+            $attributes[Tenant::internalPrefix().'db_name'] = $data['database'];
+        }
+
+        $tenant = new Tenant($attributes);
+
+        // Nunca reutilizar una base existente: al revertir una creación fallida
+        // se borraría la base de otra empresa.
+        if (Tenant::databaseNameInUse($tenant->databaseName())) {
+            throw ValidationException::withMessages([
+                'database' => "Ya existe una base de datos llamada «{$tenant->databaseName()}».",
+            ]);
+        }
 
         try {
+            // Al guardar el tenant, stancl/tenancy crea y migra su base de datos (TenancyServiceProvider).
+            $tenant->save();
+
             $tenant->domains()->create(['domain' => $data['domain']]);
 
             $tenant->run(function () use ($data) {
@@ -62,8 +82,15 @@ class TenantProvisioner
                 $user->save();
             });
         } catch (Throwable $e) {
-            // Si algo falla, no dejamos una empresa a medio crear.
-            $tenant->delete();
+            // Si algo falla, no dejamos una empresa a medio crear (la base, si
+            // alcanzó a crearse, es nueva: se comprobó arriba que no existía).
+            if ($tenant->exists) {
+                try {
+                    $tenant->delete();
+                } catch (Throwable) {
+                    // Se conserva el error original.
+                }
+            }
 
             throw $e;
         }

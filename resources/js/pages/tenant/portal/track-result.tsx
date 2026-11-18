@@ -12,6 +12,7 @@ type Props = {
     pqrs: {
         radicado: string;
         type: string;
+        sede: string | null;
         status: PqrsStatus;
         status_label: string;
         subject: string;
@@ -28,8 +29,10 @@ const ACTIVITY_LABEL: Record<PqrsActivityItem['type'], string> = {
     status_changed: 'Cambio de estado',
     note: 'Nota',
     response: 'Respuesta de la empresa',
-    // Las asignaciones son internas y nunca llegan al portal; se deja por completitud del tipo.
+    // Las asignaciones y traslados de sede son internos y nunca llegan al
+    // portal; se dejan por completitud del tipo.
     assigned: 'Asignación',
+    sede_changed: 'Traslado de sede',
 };
 
 export default function TrackResult({ pqrs }: Props) {
@@ -48,7 +51,9 @@ export default function TrackResult({ pqrs }: Props) {
                                 {pqrs.radicado}
                             </p>
                             <p className="mt-1 text-sm text-zinc-600">
-                                {pqrs.type} · {pqrs.subject}
+                                {pqrs.type}
+                                {pqrs.sede ? ` · Sede ${pqrs.sede}` : ''} ·{' '}
+                                {pqrs.subject}
                             </p>
                         </div>
                         <StatusBadge

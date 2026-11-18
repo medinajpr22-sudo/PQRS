@@ -20,6 +20,7 @@ type Props = {
     documentTypes: Option[];
     attachmentRules: { max_kb: number; mimes: string[] };
     initialType: string | null;
+    sedes: { value: number; label: string }[];
 };
 
 export default function CreatePqrs({
@@ -27,6 +28,7 @@ export default function CreatePqrs({
     documentTypes,
     attachmentRules,
     initialType,
+    sedes,
 }: Props) {
     const [files, setFiles] = useState<File[]>([]);
     const fileInput = useRef<HTMLInputElement>(null);
@@ -120,6 +122,37 @@ export default function CreatePqrs({
                                 message={errors.type}
                                 className="mt-2"
                             />
+                            {sedes.length > 0 && (
+                                <div className="mt-5 grid gap-2 sm:max-w-sm">
+                                    <Label htmlFor="sede_id">
+                                        Sede a la que diriges tu solicitud
+                                    </Label>
+                                    <NativeSelect
+                                        id="sede_id"
+                                        name="sede_id"
+                                        required
+                                        defaultValue={
+                                            sedes.length === 1
+                                                ? String(sedes[0].value)
+                                                : ''
+                                        }
+                                        aria-invalid={!!errors.sede_id}
+                                    >
+                                        <option value="" disabled>
+                                            Selecciona una sede
+                                        </option>
+                                        {sedes.map((s) => (
+                                            <option
+                                                key={s.value}
+                                                value={s.value}
+                                            >
+                                                {s.label}
+                                            </option>
+                                        ))}
+                                    </NativeSelect>
+                                    <InputError message={errors.sede_id} />
+                                </div>
+                            )}
                         </PortalCard>
 
                         <PortalCard

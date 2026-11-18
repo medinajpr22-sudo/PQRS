@@ -5,6 +5,7 @@ import {
     Inbox,
     LayoutGrid,
     LogOut,
+    MapPin,
     UserCheck,
     Users,
 } from 'lucide-react';
@@ -65,13 +66,19 @@ export function TenantAdminSidebar() {
         },
     ];
 
-    // Solo los administradores de la empresa gestionan funcionarios.
+    // Solo el administrador de empresa gestiona usuarios y sedes.
     if (auth.user?.role === 'admin') {
         items.push({
             title: 'Usuarios',
             href: admin.users.index(),
             icon: Users,
             isActive: currentUrl.startsWith('/admin/usuarios'),
+        });
+        items.push({
+            title: 'Sedes',
+            href: admin.sedes.index(),
+            icon: MapPin,
+            isActive: currentUrl.startsWith('/admin/sedes'),
         });
     }
 

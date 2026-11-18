@@ -21,6 +21,7 @@ type Filters = {
     type: string | null;
     overdue: boolean;
     assigned: string | null;
+    sede: string | null;
 };
 
 type Props = {
@@ -29,6 +30,7 @@ type Props = {
     statuses: Option[];
     types: Option[];
     staff: StaffOption[];
+    sedes: Option[];
 };
 
 export default function PqrsIndex({
@@ -37,6 +39,7 @@ export default function PqrsIndex({
     statuses,
     types,
     staff,
+    sedes,
 }: Props) {
     const isMine = filters.assigned === 'me';
     const [search, setSearch] = useState(filters.search);
@@ -65,6 +68,10 @@ export default function PqrsIndex({
             query.assigned = merged.assigned;
         }
 
+        if (merged.sede) {
+            query.sede = merged.sede;
+        }
+
         router.get(
             admin.pqrs.index.url({ query }),
             {},
@@ -81,6 +88,7 @@ export default function PqrsIndex({
         !!filters.status ||
         !!filters.type ||
         !!filters.assigned ||
+        !!filters.sede ||
         filters.overdue;
 
     return (
@@ -145,6 +153,27 @@ export default function PqrsIndex({
                                     </option>
                                 ))}
                             </NativeSelect>
+                            {sedes.length > 0 && (
+                                <NativeSelect
+                                    aria-label="Sede"
+                                    value={filters.sede ?? ''}
+                                    onChange={(e) =>
+                                        apply({ sede: e.target.value || null })
+                                    }
+                                    className="w-44"
+                                >
+                                    <option value="">
+                                        {sedes.length > 1
+                                            ? 'Todas mis sedes'
+                                            : 'Mi sede'}
+                                    </option>
+                                    {sedes.map((s) => (
+                                        <option key={s.value} value={s.value}>
+                                            {s.label}
+                                        </option>
+                                    ))}
+                                </NativeSelect>
+                            )}
                             <NativeSelect
                                 aria-label="Responsable"
                                 value={filters.assigned ?? ''}
@@ -261,6 +290,8 @@ export default function PqrsIndex({
                                             </Link>
                                             <p className="text-xs text-muted-foreground">
                                                 {p.type_label}
+                                                {' · '}
+                                                {p.sede?.name ?? 'Sin sede'}
                                             </p>
                                         </td>
                                         <td className="max-w-48 px-4 py-3">

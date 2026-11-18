@@ -7,6 +7,7 @@ use App\Http\Controllers\Tenant\Admin\AuthController;
 use App\Http\Controllers\Tenant\Admin\DashboardController;
 use App\Http\Controllers\Tenant\Admin\PqrsActivityController;
 use App\Http\Controllers\Tenant\Admin\PqrsController;
+use App\Http\Controllers\Tenant\Admin\SedeController;
 use App\Http\Controllers\Tenant\Admin\UserController;
 use App\Http\Controllers\Tenant\PortalController;
 use App\Http\Controllers\Tenant\PqrsSubmissionController;
@@ -50,7 +51,7 @@ Route::middleware([
         ->scopeBindings()
         ->name('tracking.attachment');
 
-    // Panel de la empresa (funcionarios)
+    // Panel de la empresa (administrador de empresa y agentes)
     Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('guest')->group(function () {
             Route::get('login', [AuthController::class, 'create'])->name('login');
@@ -64,19 +65,30 @@ Route::middleware([
 
             Route::get('/', DashboardController::class)->name('dashboard');
             Route::get('pqrs', [PqrsController::class, 'index'])->name('pqrs.index');
-            Route::get('pqrs/{pqrs}', [PqrsController::class, 'show'])->name('pqrs.show');
-            Route::patch('pqrs/{pqrs}/estado', [PqrsController::class, 'updateStatus'])->name('pqrs.status');
-            Route::patch('pqrs/{pqrs}/asignacion', [PqrsController::class, 'assign'])->name('pqrs.assign');
-            Route::post('pqrs/{pqrs}/actividades', [PqrsActivityController::class, 'store'])->name('pqrs.activities.store');
-            Route::get('pqrs/{pqrs}/adjuntos/{attachment}', AttachmentController::class)
-                ->scopeBindings()
-                ->name('pqrs.attachments.show');
+            // Un agente solo entra a las PQRS de sus sedes (PqrsPolicy).
+            Route::middleware('can:view,pqrs')->group(function () {
+                Route::get('pqrs/{pqrs}', [PqrsController::class, 'show'])->name('pqrs.show');
+                Route::patch('pqrs/{pqrs}/estado', [PqrsController::class, 'updateStatus'])->name('pqrs.status');
+                Route::patch('pqrs/{pqrs}/asignacion', [PqrsController::class, 'assign'])->name('pqrs.assign');
+                Route::patch('pqrs/{pqrs}/sede', [PqrsController::class, 'changeSede'])->name('pqrs.sede');
+                Route::post('pqrs/{pqrs}/actividades', [PqrsActivityController::class, 'store'])->name('pqrs.activities.store');
+                Route::get('pqrs/{pqrs}/adjuntos/{attachment}', AttachmentController::class)
+                    ->scopeBindings()
+                    ->name('pqrs.attachments.show');
+            });
 
-            // Funcionarios de la empresa (solo administradores)
+            // Usuarios de la empresa (solo el administrador de empresa)
             Route::middleware('can:manage-users')->group(function () {
                 Route::get('usuarios', [UserController::class, 'index'])->name('users.index');
                 Route::post('usuarios', [UserController::class, 'store'])->name('users.store');
                 Route::put('usuarios/{user}', [UserController::class, 'update'])->name('users.update');
+            });
+
+            // Sedes de la empresa (solo el administrador de empresa)
+            Route::middleware('can:manage-sedes')->group(function () {
+                Route::get('sedes', [SedeController::class, 'index'])->name('sedes.index');
+                Route::post('sedes', [SedeController::class, 'store'])->name('sedes.store');
+                Route::put('sedes/{sede}', [SedeController::class, 'update'])->name('sedes.update');
             });
         });
     });

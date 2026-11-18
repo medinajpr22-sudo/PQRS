@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $radicado
  * @property string $type
+ * @property int|null $sede_id
  * @property PqrsStatus $status
  * @property string $channel
  * @property string $requester_name
@@ -72,11 +73,34 @@ class Pqrs extends Model
     }
 
     /**
+     * @return BelongsTo<Sede, $this>
+     */
+    public function sede(): BelongsTo
+    {
+        return $this->belongsTo(Sede::class);
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * Solo las PQRS que este usuario puede ver: todas si es administrador;
+     * las de sus sedes si es agente.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        $ids = $user->accessibleSedeIds();
+
+        if ($ids !== null) {
+            $query->whereIn('sede_id', $ids);
+        }
     }
 
     /**

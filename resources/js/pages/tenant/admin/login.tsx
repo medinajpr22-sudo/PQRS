@@ -13,11 +13,11 @@ export default function TenantLogin() {
 
     return (
         <>
-            <Head title="Acceso funcionarios" />
+            <Head title="Acceso del personal" />
 
             <div className="mb-8 space-y-1">
                 <h1 className="text-2xl font-semibold tracking-tight">
-                    Acceso funcionarios
+                    Acceso del personal
                 </h1>
                 <p className="text-sm text-muted-foreground">
                     Ingresa al panel de PQRS de {tenant?.name}.

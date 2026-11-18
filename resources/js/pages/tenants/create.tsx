@@ -60,6 +60,10 @@ export default function CreateTenant({ plans, baseDomain }: Props) {
     const [subdomainTouched, setSubdomainTouched] = useState(false);
     const [prefix, setPrefix] = useState('');
     const [prefixTouched, setPrefixTouched] = useState(false);
+    const [database, setDatabase] = useState('');
+    const [databaseTouched, setDatabaseTouched] = useState(false);
+    const suggestDatabase = (slug: string) =>
+        slug ? `tenant_${slug.replaceAll('-', '_')}` : '';
 
     return (
         <>
@@ -97,6 +101,19 @@ export default function CreateTenant({ plans, baseDomain }: Props) {
                                                 if (!subdomainTouched) {
                                                     setSubdomain(
                                                         slugify(e.target.value),
+                                                    );
+                                                }
+
+                                                if (
+                                                    !subdomainTouched &&
+                                                    !databaseTouched
+                                                ) {
+                                                    setDatabase(
+                                                        suggestDatabase(
+                                                            slugify(
+                                                                e.target.value,
+                                                            ),
+                                                        ),
                                                     );
                                                 }
 
@@ -188,6 +205,14 @@ export default function CreateTenant({ plans, baseDomain }: Props) {
                                                     setSubdomain(
                                                         e.target.value.toLowerCase(),
                                                     );
+
+                                                    if (!databaseTouched) {
+                                                        setDatabase(
+                                                            suggestDatabase(
+                                                                e.target.value.toLowerCase(),
+                                                            ),
+                                                        );
+                                                    }
                                                 }}
                                                 className="rounded-r-none font-mono shadow-none"
                                                 placeholder="mi-empresa"
@@ -228,6 +253,31 @@ export default function CreateTenant({ plans, baseDomain }: Props) {
                                         <InputError
                                             message={errors.radicado_prefix}
                                         />
+                                    </div>
+                                    <div className="grid gap-2 sm:col-span-2">
+                                        <Label htmlFor="database">
+                                            Nombre de la base de datos
+                                        </Label>
+                                        <Input
+                                            id="database"
+                                            name="database"
+                                            required
+                                            value={database}
+                                            onChange={(e) => {
+                                                setDatabaseTouched(true);
+                                                setDatabase(
+                                                    e.target.value.toLowerCase(),
+                                                );
+                                            }}
+                                            className="font-mono"
+                                            placeholder="tenant_mi_empresa"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Base de datos propia de la empresa.
+                                            Solo minúsculas, números y guion
+                                            bajo; no se puede cambiar después.
+                                        </p>
+                                        <InputError message={errors.database} />
                                     </div>
                                 </CardContent>
                             </Card>

@@ -21,6 +21,7 @@ class StoreTenantRequest extends FormRequest
         $this->merge([
             'subdomain' => mb_strtolower(trim((string) $this->input('subdomain'))),
             'radicado_prefix' => mb_strtoupper(trim((string) $this->input('radicado_prefix'))),
+            'database' => mb_strtolower(trim((string) $this->input('database'))),
         ]);
     }
 
@@ -47,6 +48,17 @@ class StoreTenantRequest extends FormRequest
                 },
             ],
             'radicado_prefix' => ['nullable', 'string', 'max:6', 'regex:/^[A-Z0-9]+$/'],
+            // Nombre de la base de datos propia de la empresa (no se puede cambiar después).
+            'database' => [
+                'required', 'string', 'min:3', 'max:64',
+                'regex:/^[a-z][a-z0-9_]*$/',
+                Rule::notIn(Tenant::RESERVED_DATABASE_NAMES),
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (Tenant::databaseNameInUse((string) $value)) {
+                        $fail('Ya existe una base de datos con ese nombre.');
+                    }
+                },
+            ],
             'admin_name' => ['required', 'string', 'max:150'],
             'admin_email' => ['required', 'email', 'max:150'],
             'admin_password' => ['required', 'string', Password::defaults(), 'min:8'],
@@ -63,6 +75,7 @@ class StoreTenantRequest extends FormRequest
             'nit' => 'NIT',
             'subdomain' => 'subdominio',
             'radicado_prefix' => 'prefijo de radicado',
+            'database' => 'nombre de la base de datos',
             'admin_name' => 'nombre del administrador',
             'admin_email' => 'correo del administrador',
             'admin_password' => 'contraseña',

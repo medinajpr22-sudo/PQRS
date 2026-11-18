@@ -36,6 +36,44 @@ class Tenant extends BaseTenant implements TenantWithDatabase
 
     public const PLANS = ['basico', 'profesional', 'empresarial'];
 
+    /**
+     * Nombres que no se pueden usar para la base de datos de una empresa
+     * (bases del sistema en MySQL/PostgreSQL y la base central).
+     */
+    public const RESERVED_DATABASE_NAMES = [
+        'database', 'testing', 'mysql', 'sys', 'information_schema',
+        'performance_schema', 'postgres', 'template0', 'template1',
+    ];
+
+    /**
+     * Nombre real de la base de datos de esta empresa. Lo define el super
+     * administrador al crearla; las empresas antiguas usan «tenant_<id>».
+     */
+    public function databaseName(): string
+    {
+        return (string) $this->database()->getName();
+    }
+
+    /**
+     * ¿Ya hay una empresa con esa base de datos, o ya existe en el servidor?
+     */
+    public static function databaseNameInUse(string $name): bool
+    {
+        $centralDatabase = basename((string) config('database.connections.'.config('tenancy.database.central_connection').'.database'));
+
+        if ($name === $centralDatabase || str_starts_with($centralDatabase, $name.'.')) {
+            return true;
+        }
+
+        foreach (self::all() as $tenant) {
+            if ($tenant instanceof self && $tenant->databaseName() === $name) {
+                return true;
+            }
+        }
+
+        return (new self)->database()->manager()->databaseExists($name);
+    }
+
     public static function getCustomColumns(): array
     {
         return [

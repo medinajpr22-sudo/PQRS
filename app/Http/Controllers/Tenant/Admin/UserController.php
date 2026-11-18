@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Tenant\Admin;
 use App\Enums\PqrsStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\Sede;
 use App\Models\User;
+use App\Services\PqrsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +19,10 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Gestión de funcionarios de la empresa (solo administradores).
+ * Gestión de usuarios de la empresa (solo el administrador de empresa).
+ *
+ * Los agentes solo ven las PQRS de las sedes que se les asignan aquí; el
+ * administrador puede cambiarlas en cualquier momento.
  *
  * Los usuarios no se borran: se desactivan, para conservar quién hizo
  * cada actuación en el historial de las PQRS.
@@ -27,6 +32,7 @@ class UserController extends Controller
     public function index(Request $request): Response
     {
         $users = User::query()
+            ->with('sedes:id,name')
             ->withCount(['assignedPqrs as open_assigned' => fn ($q) => $q->whereIn('status', PqrsStatus::openValues())])
             ->orderByDesc('is_active')
             ->orderBy('name')
@@ -38,7 +44,8 @@ class UserController extends Controller
                 'role' => $u->role?->value,
                 'role_label' => $u->role?->label(),
                 'is_active' => $u->is_active,
-                'open_assigned' => $u->open_assigned,
+                'sedes' => $u->sedes->map(fn (Sede $s) => ['id' => $s->id, 'name' => $s->name])->values(),
+                'open_assigned' => (int) $u->getAttribute('open_assigned'),
                 'created_at' => $u->created_at,
                 'is_me' => $u->id === $request->user()->id,
             ]);
@@ -46,6 +53,7 @@ class UserController extends Controller
         return Inertia::render('tenant/admin/users/index', [
             'users' => $users,
             'roles' => UserRole::options(),
+            'sedes' => SedeController::options(),
         ]);
     }
 
@@ -57,26 +65,34 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')],
             'role' => ['required', Rule::enum(UserRole::class)],
+            'sedes' => ['nullable', 'array'],
+            'sedes.*' => ['integer', Rule::exists('sedes', 'id')],
             'password' => ['required', 'string', Password::default()],
         ], [], self::attributes());
+
+        $role = UserRole::from($data['role']);
 
         $user = new User([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => $data['password'],
         ]);
-        $user->forceFill([
-            'role' => UserRole::from($data['role']),
-            'is_active' => true,
-            'email_verified_at' => now(),
-        ])->save();
+        DB::transaction(function () use ($user, $role, $data) {
+            $user->forceFill([
+                'role' => $role,
+                'is_active' => true,
+                'email_verified_at' => now(),
+            ])->save();
+
+            $user->sedes()->sync(self::sedesFor($role, $data));
+        });
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Usuario {$user->name} creado."]);
 
         return back();
     }
 
-    public function update(Request $request, User $user): RedirectResponse
+    public function update(Request $request, User $user, PqrsService $service): RedirectResponse
     {
         self::normalizeEmail($request);
 
@@ -85,6 +101,8 @@ class UserController extends Controller
             'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => ['required', Rule::enum(UserRole::class)],
             'is_active' => ['required', 'boolean'],
+            'sedes' => ['nullable', 'array'],
+            'sedes.*' => ['integer', Rule::exists('sedes', 'id')],
             'password' => ['nullable', 'string', Password::default()],
         ], [], self::attributes());
 
@@ -110,7 +128,9 @@ class UserController extends Controller
         $passwordChanged = filled($data['password'] ?? null);
         $currentSessionId = $request->session()->getId();
 
-        DB::transaction(function () use ($user, $data, $role, $isActive, $deactivated, $passwordChanged, $stopsBeingActiveAdmin, $currentSessionId) {
+        $by = $request->user();
+
+        $released = DB::transaction(function () use ($user, $data, $role, $isActive, $deactivated, $passwordChanged, $stopsBeingActiveAdmin, $currentSessionId, $service, $by) {
             $user->fill([
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -143,11 +163,39 @@ class UserController extends Controller
                     'role' => 'La empresa debe tener al menos un administrador activo.',
                 ]);
             }
+
+            $user->sedes()->sync(self::sedesFor($role, $data));
+
+            // Si perdió acceso a una sede, sus PQRS abiertas de esa sede quedan
+            // sin responsable para que alguien que sí la atienda las tome.
+            return $service->releaseInaccessibleAssignments($user, $by);
         });
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => "Usuario {$user->name} actualizado."]);
+        $message = "Usuario {$user->name} actualizado.";
+
+        if ($released > 0) {
+            $message .= " {$released} ".($released === 1 ? 'solicitud quedó' : 'solicitudes quedaron').' sin responsable porque ya no tiene acceso a su sede.';
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
 
         return back();
+    }
+
+    /**
+     * Sedes que se guardan para el usuario. Los administradores ven todas,
+     * así que no se les asigna ninguna.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<int>
+     */
+    protected static function sedesFor(UserRole $role, array $data): array
+    {
+        if ($role === UserRole::Admin) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('intval', (array) ($data['sedes'] ?? []))));
     }
 
     /**
@@ -173,6 +221,8 @@ class UserController extends Controller
             'email' => 'correo electrónico',
             'role' => 'rol',
             'is_active' => 'estado',
+            'sedes' => 'sedes',
+            'sedes.*' => 'sede',
             'password' => 'contraseña',
         ];
     }

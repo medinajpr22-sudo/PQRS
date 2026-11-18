@@ -13,7 +13,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Inicio de sesión de los funcionarios de la empresa (usuarios de la BD del tenant).
+ * Inicio de sesión del personal de la empresa (administrador y agentes) (usuarios de la BD del tenant).
  */
 class AuthController extends Controller
 {
@@ -24,7 +24,7 @@ class AuthController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        // Los correos de los funcionarios se guardan en minúsculas.
+        // Los correos del personal se guardan en minúsculas.
         if (is_string($email = $request->input('email'))) {
             $request->merge(['email' => Str::lower(trim($email))]);
         }

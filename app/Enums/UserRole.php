@@ -3,26 +3,28 @@
 namespace App\Enums;
 
 /**
- * Rol de un funcionario dentro de su empresa (BD del tenant).
+ * Rol de un usuario dentro de su empresa (BD del tenant).
+ *
+ * El super administrador vive en la base central y no tiene rol de empresa.
  */
 enum UserRole: string
 {
     case Admin = 'admin';
-    case Funcionario = 'funcionario';
+    case Agente = 'agente';
 
     public function label(): string
     {
         return match ($this) {
-            self::Admin => 'Administrador',
-            self::Funcionario => 'Funcionario',
+            self::Admin => 'Administrador de empresa',
+            self::Agente => 'Agente',
         };
     }
 
     public function description(): string
     {
         return match ($this) {
-            self::Admin => 'Gestiona usuarios y asigna solicitudes a cualquier funcionario.',
-            self::Funcionario => 'Atiende solicitudes; puede tomar las que no tienen responsable.',
+            self::Admin => 'Gestiona sedes, usuarios y todas las PQRS y reportes de la empresa.',
+            self::Agente => 'Atiende solo las PQRS de las sedes que tiene asignadas.',
         };
     }
 

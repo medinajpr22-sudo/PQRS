@@ -12,8 +12,8 @@ class DatabaseSeeder extends Seeder
      *
      * Credenciales de prueba (solo desarrollo):
      *   Panel central:  admin@pqrs.test / Admin123*
-     *   Cada empresa:   admin@<id>.test  / Admin123*  (rol administrador, ver DemoTenantsSeeder)
-     *                   funcionario@<id>.test / Admin123*  (rol funcionario)
+     *   Cada empresa:   admin@<id>.test  / Admin123*  (administrador de empresa, ve todas las sedes)
+     *                   agente@<id>.test / Admin123*  (agente, solo la primera sede; ver DemoTenantsSeeder)
      */
     public function run(): void
     {

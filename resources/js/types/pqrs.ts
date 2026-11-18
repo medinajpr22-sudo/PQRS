@@ -73,6 +73,7 @@ export type TenantSummary = {
     status: TenantStatus;
     plan: string;
     radicado_prefix: string;
+    database: string;
     domains: string[];
     portal_url: string | null;
     logo_url: string | null;
@@ -106,6 +107,7 @@ export type PqrsListItem = {
     due_at: string | null;
     is_overdue: boolean;
     assignee: { id: number; name: string } | null;
+    sede: { id: number; name: string } | null;
 };
 
 /** Cambio de estado permitido desde el estado actual. */
@@ -113,7 +115,7 @@ export type StatusTransition = Option & { requires_reason: boolean };
 
 export type StaffOption = { value: number; label: string };
 
-export type StaffRole = 'admin' | 'funcionario';
+export type StaffRole = 'admin' | 'agente';
 
 export type StaffUser = {
     id: number;
@@ -122,6 +124,7 @@ export type StaffUser = {
     role: StaffRole;
     role_label: string;
     is_active: boolean;
+    sedes: { id: number; name: string }[];
     open_assigned: number;
     created_at: string;
     is_me: boolean;
@@ -136,7 +139,13 @@ export type AttachmentItem = {
 
 export type PqrsActivityItem = {
     id: number;
-    type: 'created' | 'status_changed' | 'note' | 'response' | 'assigned';
+    type:
+        | 'created'
+        | 'status_changed'
+        | 'note'
+        | 'response'
+        | 'assigned'
+        | 'sede_changed';
     body: string | null;
     is_public?: boolean;
     user?: { id: number; name: string } | null;
