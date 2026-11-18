@@ -13,7 +13,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $pqrs_id
  * @property int|null $user_id
- * @property string $type created|status_changed|note|response
+ * @property string $type created|status_changed|note|response|assigned
  * @property string|null $body
  * @property bool $is_public
  * @property array<string, mixed>|null $meta
@@ -28,6 +28,8 @@ class PqrsActivity extends Model
     public const TYPE_NOTE = 'note';
 
     public const TYPE_RESPONSE = 'response';
+
+    public const TYPE_ASSIGNED = 'assigned';
 
     protected $guarded = ['id'];
 

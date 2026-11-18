@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureCentralDomain;
+use App\Http\Middleware\EnsureStaffIsActive;
 use App\Http\Middleware\EnsureTenantIsActive;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'central' => EnsureCentralDomain::class,
             'tenant.active' => EnsureTenantIsActive::class,
+            'staff.active' => EnsureStaffIsActive::class,
         ]);
 
         // La verificación de dominio central debe correr antes que la sesión y la autenticación.

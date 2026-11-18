@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -20,6 +22,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string $email
  * @property Carbon|null $email_verified_at
  * @property string $password
+ * @property UserRole|null $role Solo en usuarios de empresa (BD del tenant)
+ * @property bool $is_active Solo en usuarios de empresa (BD del tenant)
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
@@ -45,6 +49,27 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
+            'role' => UserRole::class,
+            'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Administrador de la empresa. (Los super administradores del panel
+     * central no tienen rol: esto solo aplica dentro de un tenant.)
+     */
+    public function isAdmin(): bool
+    {
+        return $this->role === UserRole::Admin;
+    }
+
+    /**
+     * PQRS de las que es responsable (solo dentro de un tenant).
+     *
+     * @return HasMany<Pqrs, $this>
+     */
+    public function assignedPqrs(): HasMany
+    {
+        return $this->hasMany(Pqrs::class, 'assigned_to');
     }
 }

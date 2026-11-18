@@ -7,6 +7,7 @@ use App\Http\Controllers\Tenant\Admin\AuthController;
 use App\Http\Controllers\Tenant\Admin\DashboardController;
 use App\Http\Controllers\Tenant\Admin\PqrsActivityController;
 use App\Http\Controllers\Tenant\Admin\PqrsController;
+use App\Http\Controllers\Tenant\Admin\UserController;
 use App\Http\Controllers\Tenant\PortalController;
 use App\Http\Controllers\Tenant\PqrsSubmissionController;
 use App\Http\Controllers\Tenant\PqrsTrackingController;
@@ -58,17 +59,25 @@ Route::middleware([
                 ->name('login.store');
         });
 
-        Route::middleware('auth')->group(function () {
+        Route::middleware(['auth', 'staff.active'])->group(function () {
             Route::post('logout', [AuthController::class, 'destroy'])->name('logout');
 
             Route::get('/', DashboardController::class)->name('dashboard');
             Route::get('pqrs', [PqrsController::class, 'index'])->name('pqrs.index');
             Route::get('pqrs/{pqrs}', [PqrsController::class, 'show'])->name('pqrs.show');
             Route::patch('pqrs/{pqrs}/estado', [PqrsController::class, 'updateStatus'])->name('pqrs.status');
+            Route::patch('pqrs/{pqrs}/asignacion', [PqrsController::class, 'assign'])->name('pqrs.assign');
             Route::post('pqrs/{pqrs}/actividades', [PqrsActivityController::class, 'store'])->name('pqrs.activities.store');
             Route::get('pqrs/{pqrs}/adjuntos/{attachment}', AttachmentController::class)
                 ->scopeBindings()
                 ->name('pqrs.attachments.show');
+
+            // Funcionarios de la empresa (solo administradores)
+            Route::middleware('can:manage-users')->group(function () {
+                Route::get('usuarios', [UserController::class, 'index'])->name('users.index');
+                Route::post('usuarios', [UserController::class, 'store'])->name('users.store');
+                Route::put('usuarios/{user}', [UserController::class, 'update'])->name('users.update');
+            });
         });
     });
 });

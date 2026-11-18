@@ -105,6 +105,26 @@ export type PqrsListItem = {
     created_at: string;
     due_at: string | null;
     is_overdue: boolean;
+    assignee: { id: number; name: string } | null;
+};
+
+/** Cambio de estado permitido desde el estado actual. */
+export type StatusTransition = Option & { requires_reason: boolean };
+
+export type StaffOption = { value: number; label: string };
+
+export type StaffRole = 'admin' | 'funcionario';
+
+export type StaffUser = {
+    id: number;
+    name: string;
+    email: string;
+    role: StaffRole;
+    role_label: string;
+    is_active: boolean;
+    open_assigned: number;
+    created_at: string;
+    is_me: boolean;
 };
 
 export type AttachmentItem = {
@@ -116,7 +136,7 @@ export type AttachmentItem = {
 
 export type PqrsActivityItem = {
     id: number;
-    type: 'created' | 'status_changed' | 'note' | 'response';
+    type: 'created' | 'status_changed' | 'note' | 'response' | 'assigned';
     body: string | null;
     is_public?: boolean;
     user?: { id: number; name: string } | null;
