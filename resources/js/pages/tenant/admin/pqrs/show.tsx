@@ -1,4 +1,4 @@
-import { Form, Head, Link, router } from '@inertiajs/react';
+import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     Download,
@@ -11,6 +11,7 @@ import {
     RefreshCw,
     Send,
     StickyNote,
+    UserCheck,
     UserRound,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -20,6 +21,13 @@ import { DueDate } from '@/components/pqrs/due-date';
 import { OverdueBadge, StatusBadge } from '@/components/pqrs/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,9 +36,10 @@ import { cn } from '@/lib/utils';
 import admin from '@/routes/tenant/admin';
 import type {
     AttachmentItem,
-    Option,
     PqrsActivityItem,
     PqrsListItem,
+    StaffOption,
+    StatusTransition,
 } from '@/types';
 
 type Props = {
@@ -53,7 +62,9 @@ type Props = {
         attachments: AttachmentItem[];
         activities: PqrsActivityItem[];
     };
-    statuses: Option[];
+    transitions: StatusTransition[];
+    staff: StaffOption[];
+    canAssignOthers: boolean;
 };
 
 const ACTIVITY: Record<
@@ -82,11 +93,77 @@ const ACTIVITY: Record<
         className:
             'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
     },
+    assigned: {
+        label: 'Asignación',
+        icon: UserCheck,
+        className:
+            'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+    },
 };
 
-export default function PqrsShow({ pqrs, statuses }: Props) {
-    const [mode, setMode] = useState<'response' | 'note'>('response');
+export default function PqrsShow({
+    pqrs,
+    transitions,
+    staff,
+    canAssignOthers,
+}: Props) {
+    const { auth, errors } = usePage().props;
+    // Si el responsable actual fue desactivado, igual debe aparecer en la lista.
+    const staffOptions: StaffOption[] =
+        pqrs.assignee && !staff.some((s) => s.value === pqrs.assignee?.id)
+            ? [
+                  ...staff,
+                  {
+                      value: pqrs.assignee.id,
+                      label: `${pqrs.assignee.name} (inactivo)`,
+                  },
+              ]
+            : staff;
+    const [mode, setMode] = useState<'response' | 'note'>(
+        pqrs.status === 'cerrada' ? 'note' : 'response',
+    );
+    const [pending, setPending] = useState<StatusTransition | null>(null);
+    const [reason, setReason] = useState('');
+    const [saving, setSaving] = useState(false);
     const isOpen = pqrs.status === 'radicada' || pqrs.status === 'en_tramite';
+    const isClosed = pqrs.status === 'cerrada';
+
+    const changeStatus = (status: string, withReason?: string) => {
+        setSaving(true);
+        router.patch(
+            admin.pqrs.status.url(pqrs.radicado),
+            { status, reason: withReason ?? null },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setPending(null);
+                    setReason('');
+                },
+                onFinish: () => setSaving(false),
+            },
+        );
+    };
+
+    const onSelectStatus = (value: string) => {
+        const transition = transitions.find((t) => t.value === value);
+
+        if (!transition) {
+            return;
+        }
+
+        if (transition.requires_reason) {
+            setPending(transition);
+        } else {
+            changeStatus(transition.value);
+        }
+    };
+
+    const assign = (userId: number | null) =>
+        router.patch(
+            admin.pqrs.assign.url(pqrs.radicado),
+            { assigned_to: userId },
+            { preserveScroll: true },
+        );
 
     const attachmentUrl = (id: number) =>
         admin.pqrs.attachments.show({ pqrs: pqrs.radicado, attachment: id })
@@ -121,27 +198,96 @@ export default function PqrsShow({ pqrs, statuses }: Props) {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-start gap-1 lg:items-end">
                         <NativeSelect
                             aria-label="Cambiar estado"
-                            value={pqrs.status}
-                            onChange={(e) =>
-                                router.patch(
-                                    admin.pqrs.status.url(pqrs.radicado),
-                                    { status: e.target.value },
-                                    { preserveScroll: true },
-                                )
-                            }
-                            className="w-48"
+                            value=""
+                            disabled={saving || transitions.length === 0}
+                            onChange={(e) => onSelectStatus(e.target.value)}
+                            className="w-56"
                         >
-                            {statuses.map((s) => (
-                                <option key={s.value} value={s.value}>
-                                    Estado: {s.label}
+                            <option value="" disabled>
+                                Cambiar estado…
+                            </option>
+                            {transitions.map((t) => (
+                                <option key={t.value} value={t.value}>
+                                    {isClosed && t.value === 'en_tramite'
+                                        ? 'Reabrir (En trámite)'
+                                        : t.label}
+                                    {t.requires_reason ? ' · pide motivo' : ''}
                                 </option>
                             ))}
                         </NativeSelect>
+                        {!pending && <InputError message={errors.status} />}
+                        {pqrs.status !== 'respondida' && !isClosed && (
+                            <p className="text-xs text-muted-foreground">
+                                Pasa a «Respondida» al enviar una respuesta.
+                            </p>
+                        )}
                     </div>
                 </div>
+
+                <Dialog
+                    open={pending !== null}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setPending(null);
+                            setReason('');
+                        }
+                    }}
+                >
+                    <DialogContent>
+                        <DialogTitle>
+                            {isOpen
+                                ? 'Cerrar sin respuesta'
+                                : 'Reabrir la solicitud'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            El motivo queda en el historial y el ciudadano lo
+                            verá en la consulta de su radicado.
+                        </DialogDescription>
+                        <form
+                            className="space-y-3"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+
+                                if (pending) {
+                                    changeStatus(pending.value, reason);
+                                }
+                            }}
+                        >
+                            <Textarea
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                                rows={4}
+                                required
+                                minLength={5}
+                                placeholder={
+                                    isOpen
+                                        ? 'Ej.: Solicitud duplicada del radicado …'
+                                        : 'Ej.: El ciudadano indica que la respuesta no resolvió su caso.'
+                                }
+                                aria-invalid={!!errors.reason}
+                            />
+                            <InputError
+                                message={errors.reason ?? errors.status}
+                            />
+                            <DialogFooter className="gap-2">
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={() => setPending(null)}
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button type="submit" disabled={saving}>
+                                    {saving && <Spinner />}
+                                    Confirmar
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 <div className="grid gap-6 lg:grid-cols-3">
                     <div className="space-y-6 lg:col-span-2">
@@ -181,8 +327,18 @@ export default function PqrsShow({ pqrs, statuses }: Props) {
                                                     key={m}
                                                     type="button"
                                                     onClick={() => setMode(m)}
+                                                    disabled={
+                                                        m === 'response' &&
+                                                        isClosed
+                                                    }
+                                                    title={
+                                                        m === 'response' &&
+                                                        isClosed
+                                                            ? 'Reabre la solicitud para responder'
+                                                            : undefined
+                                                    }
                                                     className={cn(
-                                                        'flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors',
+                                                        'flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                                                         mode === m
                                                             ? 'bg-background shadow-sm'
                                                             : 'text-muted-foreground hover:text-foreground',
@@ -351,6 +507,66 @@ export default function PqrsShow({ pqrs, statuses }: Props) {
                     </div>
 
                     <div className="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Responsable</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3 text-sm">
+                                {canAssignOthers ? (
+                                    <NativeSelect
+                                        aria-label="Asignar responsable"
+                                        value={pqrs.assignee?.id ?? ''}
+                                        onChange={(e) =>
+                                            assign(
+                                                e.target.value
+                                                    ? Number(e.target.value)
+                                                    : null,
+                                            )
+                                        }
+                                    >
+                                        <option value="">Sin responsable</option>
+                                        {staffOptions.map((s) => (
+                                            <option key={s.value} value={s.value}>
+                                                {s.label}
+                                                {s.value === auth.user.id
+                                                    ? ' (yo)'
+                                                    : ''}
+                                            </option>
+                                        ))}
+                                    </NativeSelect>
+                                ) : (
+                                    <>
+                                        <p className="flex items-center gap-2 font-medium">
+                                            <UserCheck className="size-4 text-muted-foreground" />
+                                            {pqrs.assignee?.name ??
+                                                'Sin responsable'}
+                                        </p>
+                                        {!pqrs.assignee && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() =>
+                                                    assign(auth.user.id)
+                                                }
+                                            >
+                                                Tomar esta solicitud
+                                            </Button>
+                                        )}
+                                        {pqrs.assignee?.id === auth.user.id && (
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => assign(null)}
+                                            >
+                                                Soltar solicitud
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                                <InputError message={errors.assigned_to} />
+                            </CardContent>
+                        </Card>
+
                         <Card>
                             <CardHeader>
                                 <CardTitle>Solicitante</CardTitle>

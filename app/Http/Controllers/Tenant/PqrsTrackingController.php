@@ -90,6 +90,9 @@ class PqrsTrackingController extends Controller
     {
         abort_unless($request->session()->get("tracking.{$pqrs->radicado}"), 403);
 
+        // Los adjuntos de notas internas no se exponen al ciudadano, aunque adivine el número.
+        abort_unless($attachment->isPublic(), 404);
+
         return Storage::disk('local')->download($attachment->path, $attachment->original_name);
     }
 }

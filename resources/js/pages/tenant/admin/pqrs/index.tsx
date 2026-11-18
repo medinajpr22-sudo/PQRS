@@ -13,13 +13,14 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formatDate } from '@/lib/format';
 import admin from '@/routes/tenant/admin';
-import type { Option, Paginated, PqrsListItem } from '@/types';
+import type { Option, Paginated, PqrsListItem, StaffOption } from '@/types';
 
 type Filters = {
     search: string;
     status: string | null;
     type: string | null;
     overdue: boolean;
+    assigned: string | null;
 };
 
 type Props = {
@@ -27,9 +28,17 @@ type Props = {
     filters: Filters;
     statuses: Option[];
     types: Option[];
+    staff: StaffOption[];
 };
 
-export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
+export default function PqrsIndex({
+    pqrs,
+    filters,
+    statuses,
+    types,
+    staff,
+}: Props) {
+    const isMine = filters.assigned === 'me';
     const [search, setSearch] = useState(filters.search);
 
     const apply = (next: Partial<Filters>) => {
@@ -52,6 +61,10 @@ export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
             query.overdue = 1;
         }
 
+        if (merged.assigned) {
+            query.assigned = merged.assigned;
+        }
+
         router.get(
             admin.pqrs.index.url({ query }),
             {},
@@ -67,16 +80,21 @@ export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
         !!filters.search ||
         !!filters.status ||
         !!filters.type ||
+        !!filters.assigned ||
         filters.overdue;
 
     return (
         <>
-            <Head title="Solicitudes PQRS" />
+            <Head title={isMine ? 'Mis PQRS' : 'Solicitudes PQRS'} />
 
             <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
                 <PageHeader
-                    title="Solicitudes PQRS"
-                    description="Busca, filtra y gestiona las solicitudes radicadas."
+                    title={isMine ? 'Mis PQRS' : 'Solicitudes PQRS'}
+                    description={
+                        isMine
+                            ? 'Solicitudes de las que eres responsable.'
+                            : 'Busca, filtra y gestiona las solicitudes radicadas.'
+                    }
                 />
 
                 <Card className="gap-0 py-0">
@@ -127,6 +145,23 @@ export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
                                     </option>
                                 ))}
                             </NativeSelect>
+                            <NativeSelect
+                                aria-label="Responsable"
+                                value={filters.assigned ?? ''}
+                                onChange={(e) =>
+                                    apply({ assigned: e.target.value || null })
+                                }
+                                className="w-44"
+                            >
+                                <option value="">Todos los responsables</option>
+                                <option value="me">Asignadas a mí</option>
+                                <option value="none">Sin responsable</option>
+                                {staff.map((s) => (
+                                    <option key={s.value} value={String(s.value)}>
+                                        {s.label}
+                                    </option>
+                                ))}
+                            </NativeSelect>
                             <div className="flex items-center gap-2">
                                 <Checkbox
                                     id="overdue"
@@ -170,6 +205,9 @@ export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
                                         Estado
                                     </th>
                                     <th className="px-4 py-3 font-medium">
+                                        Responsable
+                                    </th>
+                                    <th className="px-4 py-3 font-medium">
                                         Radicada
                                     </th>
                                     <th className="px-4 py-3 font-medium">
@@ -181,7 +219,7 @@ export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
                                 {pqrs.data.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={6}
+                                            colSpan={7}
                                             className="px-4 py-16 text-center"
                                         >
                                             <Inbox className="mx-auto size-8 text-muted-foreground" />
@@ -245,6 +283,17 @@ export default function PqrsIndex({ pqrs, filters, statuses, types }: Props) {
                                                     <OverdueBadge />
                                                 )}
                                             </div>
+                                        </td>
+                                        <td className="max-w-40 px-4 py-3">
+                                            <p
+                                                className={
+                                                    p.assignee
+                                                        ? 'truncate'
+                                                        : 'truncate text-muted-foreground'
+                                                }
+                                            >
+                                                {p.assignee?.name ?? 'Sin asignar'}
+                                            </p>
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap tabular-nums">
                                             {formatDate(p.created_at)}

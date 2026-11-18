@@ -5,14 +5,28 @@ namespace App\Notifications;
 use App\Models\Pqrs;
 use App\Models\Tenant;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class PqrsReceivedNotification extends Notification
+/**
+ * Se envía por cola: si el servidor de correo falla, se reintenta y el
+ * ciudadano no tiene que esperar el envío para ver su radicado.
+ * (La cola sabe de qué empresa es cada correo gracias a QueueTenancyBootstrapper.)
+ */
+class PqrsReceivedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Pqrs $pqrs, public Tenant $tenant) {}
+    public int $tries = 5;
+
+    /** @var list<int> Segundos de espera entre reintentos */
+    public array $backoff = [60, 300, 900, 3600];
+
+    public function __construct(public Pqrs $pqrs, public Tenant $tenant)
+    {
+        $this->afterCommit();
+    }
 
     /**
      * @return list<string>

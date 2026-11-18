@@ -6,13 +6,16 @@ return [
     | Festivos
     |--------------------------------------------------------------------------
     |
-    | Fechas (Y-m-d) que no cuentan como días hábiles al calcular el
-    | vencimiento de una PQRS.
+    | Los festivos de Colombia se calculan solos para cualquier año
+    | (App\Support\ColombianHolidays). En "holidays" puedes agregar días
+    | extra (Y-m-d) que tampoco deben contar como hábiles, por ejemplo un
+    | día cívico decretado.
     |
     */
+    'colombian_holidays' => env('PQRS_COLOMBIAN_HOLIDAYS', true),
+
     'holidays' => [
-        // '2026-12-08',
-        // '2026-12-25',
+        // '2026-12-24',
     ],
 
     /*

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\UserRole;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\TenantDefaults;
@@ -57,6 +58,7 @@ class TenantProvisioner
                     'password' => $data['admin_password'],
                 ]);
                 $user->email_verified_at = now();
+                $user->role = UserRole::Admin;
                 $user->save();
             });
         } catch (Throwable $e) {

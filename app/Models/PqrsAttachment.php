@@ -28,4 +28,23 @@ class PqrsAttachment extends Model
     {
         return $this->belongsTo(Pqrs::class);
     }
+
+    /**
+     * Actuación a la que pertenece el archivo (radicación, nota interna o respuesta).
+     *
+     * @return BelongsTo<PqrsActivity, $this>
+     */
+    public function activity(): BelongsTo
+    {
+        return $this->belongsTo(PqrsActivity::class, 'activity_id');
+    }
+
+    /**
+     * Solo los archivos de actuaciones públicas (radicación y respuestas)
+     * pueden verse desde el portal; los de notas internas nunca.
+     */
+    public function isPublic(): bool
+    {
+        return $this->activity?->is_public === true;
+    }
 }

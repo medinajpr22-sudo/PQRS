@@ -5,6 +5,8 @@ import {
     Inbox,
     LayoutGrid,
     LogOut,
+    UserCheck,
+    Users,
 } from 'lucide-react';
 import { NavMain } from '@/components/nav-main';
 import { TenantAvatar } from '@/components/tenants/tenant-avatar';
@@ -35,10 +37,12 @@ import admin from '@/routes/tenant/admin';
 import type { NavItem } from '@/types';
 
 export function TenantAdminSidebar() {
-    const { tenant, auth } = usePage().props;
+    const page = usePage();
+    const { tenant, auth } = page.props;
     const { state } = useSidebar();
     const isMobile = useIsMobile();
     const { currentUrl } = useCurrentUrl();
+    const isMine = page.url.includes('assigned=me');
 
     const items: NavItem[] = [
         {
@@ -48,12 +52,28 @@ export function TenantAdminSidebar() {
             isActive: currentUrl === '/admin',
         },
         {
+            title: 'Mis PQRS',
+            href: admin.pqrs.index({ query: { assigned: 'me' } }),
+            icon: UserCheck,
+            isActive: currentUrl === '/admin/pqrs' && isMine,
+        },
+        {
             title: 'Solicitudes PQRS',
             href: admin.pqrs.index(),
             icon: Inbox,
-            isActive: currentUrl.startsWith('/admin/pqrs'),
+            isActive: currentUrl.startsWith('/admin/pqrs') && !isMine,
         },
     ];
+
+    // Solo los administradores de la empresa gestionan funcionarios.
+    if (auth.user?.role === 'admin') {
+        items.push({
+            title: 'Usuarios',
+            href: admin.users.index(),
+            icon: Users,
+            isActive: currentUrl.startsWith('/admin/usuarios'),
+        });
+    }
 
     return (
         <Sidebar collapsible="icon" variant="inset">

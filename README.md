@@ -24,7 +24,22 @@ Construida con Laravel 13, Inertia + React, Tailwind y [stancl/tenancy](https://
 
 ### Panel de la empresa
 - Resumen: abiertas, por vencer, vencidas, % respondidas a tiempo.
-- Bandeja con búsqueda y filtros; detalle con historial, notas internas y respuestas al ciudadano (envía correo y cambia el estado a *Respondida*).
+- Bandeja con búsqueda y filtros (incluye **Mis PQRS** y "sin responsable"); detalle con historial, notas internas y respuestas al ciudadano (envía correo y cambia el estado a *Respondida*).
+- **Usuarios** (solo administradores): crear funcionarios, cambiar rol, desactivar (cierra sus sesiones). Roles: *administrador* (gestiona usuarios y asigna a cualquiera) y *funcionario* (puede tomar las PQRS sin responsable o soltar las suyas).
+- **Asignación**: cada PQRS puede tener un responsable; se le avisa por correo y queda en el historial interno.
+
+### Reglas de estado
+| Desde | Puede pasar a (a mano) |
+|---|---|
+| Radicada | En trámite · Cerrada (pide motivo) |
+| En trámite | Cerrada (pide motivo) |
+| Respondida | Cerrada · En trámite (reabrir, pide motivo) |
+| Cerrada | En trámite (reabrir, pide motivo) |
+
+*Respondida* solo se alcanza enviando una respuesta (así siempre queda la fecha y se notifica al ciudadano). Una PQRS cerrada no se puede responder sin reabrirla. Todos los cambios, incluidos los automáticos, quedan en el historial.
+
+### Plazos
+El vencimiento se cuenta en días hábiles desde el día siguiente a la radicación, sin sábados, domingos ni **festivos de Colombia, que se calculan solos** para cualquier año (`app/Support/ColombianHolidays.php`). Días extra se agregan en `config/pqrs.php`.
 
 ## Instalación local
 
@@ -38,7 +53,12 @@ php artisan db:seed     # admin central + 3 empresas de ejemplo
 php artisan storage:link
 npm run build           # o "npm run dev" mientras desarrollas
 php artisan serve --host=localhost --port=8000
+php artisan queue:work   # en otra terminal: envía los correos (van por cola)
 ```
+
+> Requiere **PHP 8.4** (Laravel 13 y Pest 5 lo exigen).
+
+Si ya tenías empresas creadas, después de actualizar ejecuta `php artisan tenants:migrate` para agregar el contador de radicados y los roles de usuario a sus bases de datos.
 
 Abre **http://localhost:8000** (no `127.0.0.1`: el dominio central es `localhost`). Los navegadores resuelven `*.localhost` automáticamente, así que los portales de ejemplo funcionan sin tocar el archivo `hosts`:
 
@@ -83,5 +103,5 @@ php artisan tenants:list         # listar empresas
 2. **Base de datos**: cambia a MySQL/PostgreSQL. El usuario de la BD necesita permiso para crear bases de datos (una por empresa).
 3. **Correo**: configura SMTP (`MAIL_*`). Hoy los correos se escriben en `storage/logs/laravel.log`.
 4. **Colas**: activa `shouldBeQueued(true)` en `app/Providers/TenancyServiceProvider.php` y ejecuta un worker (`php artisan queue:work`).
-5. **Festivos**: agrega los festivos de Colombia en `config/pqrs.php` para que el vencimiento se calcule en días hábiles reales.
+5. **Festivos**: los de Colombia ya se calculan solos; agrega en `config/pqrs.php` solo días extra (p. ej. un día cívico decretado).
 6. **Credenciales**: cambia o elimina los usuarios de ejemplo del seeder.

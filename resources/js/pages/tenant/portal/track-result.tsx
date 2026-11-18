@@ -28,6 +28,8 @@ const ACTIVITY_LABEL: Record<PqrsActivityItem['type'], string> = {
     status_changed: 'Cambio de estado',
     note: 'Nota',
     response: 'Respuesta de la empresa',
+    // Las asignaciones son internas y nunca llegan al portal; se deja por completitud del tipo.
+    assigned: 'Asignación',
 };
 
 export default function TrackResult({ pqrs }: Props) {
