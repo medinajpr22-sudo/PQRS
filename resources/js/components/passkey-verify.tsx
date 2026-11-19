@@ -15,6 +15,8 @@ type Props = {
     label?: string;
     loadingLabel?: string;
     separator?: string;
+    /** 'after': va debajo del formulario de correo, como opción secundaria. */
+    position?: 'before' | 'after';
 };
 
 export default function PasskeyVerify({
@@ -22,6 +24,7 @@ export default function PasskeyVerify({
     label,
     loadingLabel,
     separator,
+    position = 'before',
 }: Props = {}) {
     const { verify, isLoading, error, isSupported } = usePasskeyVerify({
         ...(routes && {
@@ -39,36 +42,49 @@ export default function PasskeyVerify({
         return null;
     }
 
-    return (
-        <>
-            <div className="grid gap-2">
-                <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={verify}
-                    disabled={isLoading}
-                >
-                    {isLoading ? <Spinner /> : <KeyRound className="h-4 w-4" />}
-                    {isLoading
-                        ? (loadingLabel ?? 'Verificando…')
-                        : (label ?? 'Entrar con una llave de acceso')}
-                </Button>
-                {error && (
-                    <InputError message={error} className="text-center" />
-                )}
-            </div>
+    const button = (
+        <div className="grid gap-2">
+            <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={verify}
+                disabled={isLoading}
+            >
+                {isLoading ? <Spinner /> : <KeyRound className="h-4 w-4" />}
+                {isLoading
+                    ? (loadingLabel ?? 'Verificando…')
+                    : (label ?? 'Entrar con una llave de acceso')}
+            </Button>
+            {error && <InputError message={error} className="text-center" />}
+        </div>
+    );
 
-            <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                    <Separator className="w-full" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                        {separator ?? 'O continúa con tu correo'}
-                    </span>
-                </div>
+    const divider = (
+        <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+                <Separator className="w-full" />
             </div>
+            <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                    {separator ??
+                        (position === 'after'
+                            ? 'O sin contraseña'
+                            : 'O continúa con tu correo')}
+                </span>
+            </div>
+        </div>
+    );
+
+    return position === 'after' ? (
+        <>
+            {divider}
+            {button}
+        </>
+    ) : (
+        <>
+            {button}
+            {divider}
         </>
     );
 }

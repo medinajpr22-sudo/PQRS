@@ -43,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         // Solo el administrador de empresa gestiona usuarios y sedes.
         Gate::define('manage-users', fn (User $user) => $user->isAdmin());
         Gate::define('manage-sedes', fn (User $user) => $user->isAdmin());
+        Gate::define('manage-branding', fn (User $user) => $user->isAdmin());
 
         // Un agente solo ve las PQRS de sus sedes.
         Gate::policy(Pqrs::class, PqrsPolicy::class);

@@ -19,7 +19,7 @@ export default function TenantLogin() {
                 <h1 className="text-3xl font-bold tracking-tight">
                     Panel de PQRS
                 </h1>
-                <p className="mt-1 text-zinc-500">
+                <p className="mt-1 text-muted-foreground">
                     Inicia sesión para continuar en {tenant?.name}.
                 </p>
             </div>
@@ -67,7 +67,7 @@ export default function TenantLogin() {
                         </Button>
                         <a
                             href="/"
-                            className="text-center text-sm text-zinc-500 hover:text-zinc-900"
+                            className="text-center text-sm text-muted-foreground hover:text-foreground"
                         >
                             ← Volver al portal público
                         </a>

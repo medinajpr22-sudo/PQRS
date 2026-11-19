@@ -4,6 +4,7 @@ import {
     Inbox,
     LayoutGrid,
     MapPin,
+    Palette,
     UserCheck,
     Users,
 } from 'lucide-react';
@@ -57,7 +58,7 @@ export function TenantAdminSidebar() {
         },
     ];
 
-    // Solo el administrador de empresa gestiona usuarios y sedes.
+    // Solo el administrador de empresa gestiona usuarios, sedes y colores.
     const administration: NavItem[] =
         auth.user?.role === 'admin'
             ? [
@@ -72,6 +73,12 @@ export function TenantAdminSidebar() {
                       href: admin.sedes.index(),
                       icon: MapPin,
                       isActive: currentUrl.startsWith('/admin/sedes'),
+                  },
+                  {
+                      title: 'Colores',
+                      href: admin.branding.edit(),
+                      icon: Palette,
+                      isActive: currentUrl.startsWith('/admin/colores'),
                   },
               ]
             : [];

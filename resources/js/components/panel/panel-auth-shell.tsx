@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 
 /**
  * Pantalla de inicio de sesión de los paneles: fondo del color del panel
- * con formas decorativas y una tarjeta blanca centrada con la marca.
+ * con formas decorativas y una tarjeta centrada con la marca. La tarjeta
+ * sigue el modo claro u oscuro, igual que los campos y botones que lleva
+ * adentro; si fuera siempre blanca, en modo oscuro el texto no se vería.
  */
 export function PanelAuthShell({
     brand,
@@ -31,10 +33,10 @@ export function PanelAuthShell({
             />
             <div
                 aria-hidden
-                className="absolute bottom-[10%] left-[18%] hidden h-56 w-24 -rotate-[35deg] rounded-[2rem] bg-white/80 shadow-2xl md:block"
+                className="absolute bottom-[10%] left-[18%] hidden h-56 w-24 -rotate-[35deg] rounded-[2rem] bg-white/80 shadow-2xl md:block dark:bg-white/15"
             />
 
-            <div className="relative w-full max-w-md rounded-3xl bg-white p-8 text-zinc-900 shadow-2xl sm:p-9">
+            <div className="relative w-full max-w-md rounded-3xl bg-background p-8 text-foreground shadow-2xl sm:p-9 dark:ring-1 dark:ring-white/10">
                 {brand}
                 {title && (
                     <div className="mt-6 mb-6">
@@ -42,7 +44,9 @@ export function PanelAuthShell({
                             {title}
                         </h1>
                         {description && (
-                            <p className="mt-1 text-zinc-500">{description}</p>
+                            <p className="mt-1 text-muted-foreground">
+                                {description}
+                            </p>
                         )}
                     </div>
                 )}

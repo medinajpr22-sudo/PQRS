@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\Admin\AttachmentController;
 use App\Http\Controllers\Tenant\Admin\AuthController;
+use App\Http\Controllers\Tenant\Admin\BrandingController;
 use App\Http\Controllers\Tenant\Admin\DashboardController;
 use App\Http\Controllers\Tenant\Admin\PqrsActivityController;
 use App\Http\Controllers\Tenant\Admin\PqrsController;
@@ -88,6 +89,12 @@ Route::middleware([
             });
 
             // Sedes de la empresa (solo el administrador de empresa)
+            // Colores del portal y del panel (solo el administrador de empresa)
+            Route::middleware('can:manage-branding')->group(function () {
+                Route::get('colores', [BrandingController::class, 'edit'])->name('branding.edit');
+                Route::put('colores', [BrandingController::class, 'update'])->name('branding.update');
+            });
+
             Route::middleware('can:manage-sedes')->group(function () {
                 Route::get('sedes', [SedeController::class, 'index'])->name('sedes.index');
                 Route::post('sedes', [SedeController::class, 'store'])->name('sedes.store');

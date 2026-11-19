@@ -171,35 +171,83 @@
  * sobre las utilidades de los componentes de shadcn).
  */
 
-/* Fondo claro con un degradado suave del color de acento a la derecha. */
+/*
+ * Fondo con los dos colores que cada empresa elige para su panel: un halo
+ * del color del panel arriba, detrás del título, y uno del color de acento
+ * a la derecha. Se usan versiones claras de esos colores (mismo tono, más
+ * luz), así un verde oscuro se ve como un verde menta y no como gris sucio.
+ */
 .panel-bg {
     background-color: var(--background);
+    /* Navegadores sin colores relativos: mezcla simple con transparencia. */
     background-image:
         radial-gradient(
-            70rem 45rem at 105% -5%,
-            color-mix(in oklab, var(--panel-accent) 32%, transparent),
-            transparent 60%
+            70rem 30rem at 30% -8%,
+            color-mix(in oklab, var(--panel) 22%, transparent),
+            transparent 70%
         ),
         radial-gradient(
-            45rem 35rem at 75% 110%,
-            color-mix(in oklab, var(--panel) 18%, transparent),
-            transparent 65%
+            50rem 42rem at 104% 0%,
+            color-mix(in oklab, var(--panel-accent) 30%, transparent),
+            transparent 68%
         );
     background-attachment: fixed;
+}
+
+@supports (color: oklch(from red l c h)) {
+    .panel-bg {
+        background-image:
+            radial-gradient(
+                70rem 30rem at 30% -8%,
+                oklch(from var(--panel) 0.88 min(calc(c * 2), 0.16) h / 0.9),
+                transparent 70%
+            ),
+            radial-gradient(
+                50rem 42rem at 104% 0%,
+                oklch(from var(--panel-accent) 0.84 min(c, 0.14) h / 0.75),
+                transparent 68%
+            ),
+            radial-gradient(
+                42rem 36rem at 103% 104%,
+                oklch(from var(--panel-accent) 0.86 min(c, 0.12) h / 0.4),
+                transparent 70%
+            );
+    }
 }
 
 .dark .panel-bg {
     background-image:
         radial-gradient(
-            70rem 45rem at 105% -5%,
-            color-mix(in oklab, var(--panel-accent) 22%, transparent),
-            transparent 60%
+            70rem 30rem at 30% -8%,
+            color-mix(in oklab, var(--panel) 45%, transparent),
+            transparent 70%
         ),
         radial-gradient(
-            45rem 35rem at 75% 110%,
-            color-mix(in oklab, var(--panel) 30%, transparent),
-            transparent 65%
+            50rem 42rem at 104% 0%,
+            color-mix(in oklab, var(--panel-accent) 28%, transparent),
+            transparent 68%
         );
+}
+
+@supports (color: oklch(from red l c h)) {
+    .dark .panel-bg {
+        background-image:
+            radial-gradient(
+                70rem 30rem at 30% -8%,
+                oklch(from var(--panel) 0.42 min(calc(c * 1.6), 0.13) h / 0.6),
+                transparent 70%
+            ),
+            radial-gradient(
+                50rem 42rem at 104% 0%,
+                oklch(from var(--panel-accent) 0.42 min(c, 0.14) h / 0.5),
+                transparent 68%
+            ),
+            radial-gradient(
+                42rem 36rem at 103% 104%,
+                oklch(from var(--panel-accent) 0.38 min(c, 0.12) h / 0.3),
+                transparent 70%
+            );
+    }
 }
 
 /* Menú lateral: tarjeta redondeada con degradado del color del panel. */

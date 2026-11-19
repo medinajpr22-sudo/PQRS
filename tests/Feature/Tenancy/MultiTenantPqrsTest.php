@@ -12,6 +12,7 @@ use App\Models\PqrsAttachment;
 use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Notifications\NewPqrsForSedeNotification;
 use App\Notifications\PqrsAssignedNotification;
 use App\Notifications\PqrsReceivedNotification;
 use App\Notifications\PqrsRespondedNotification;
@@ -208,17 +209,27 @@ test('staff can answer a pqrs and the citizen is notified', function () {
     $this->post(portal($tenant, 'radicar'), validSubmission());
     [$staff, $radicado] = $tenant->run(fn () => [User::first(), Pqrs::sole()->radicado]);
 
+    // Solo el responsable responde: primero hay que aceptar serlo.
     $this->actingAs($staff)
         ->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), [
             'type' => 'response',
             'body' => 'Su solicitud fue atendida satisfactoriamente.',
+        ])
+        ->assertSessionHasErrors('body');
+
+    $this->actingAs($staff)
+        ->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), [
+            'type' => 'response',
+            'body' => 'Su solicitud fue atendida satisfactoriamente.',
+            'take' => '1',
         ])
         ->assertSessionHasNoErrors();
 
     $pqrs = $tenant->run(fn () => Pqrs::sole());
 
     expect($pqrs->status)->toBe(PqrsStatus::Respondida)
-        ->and($pqrs->responded_at)->not->toBeNull();
+        ->and($pqrs->responded_at)->not->toBeNull()
+        ->and($pqrs->assigned_to)->toBe($staff->id);
 
     Notification::assertSentOnDemand(PqrsRespondedNotification::class);
 });
@@ -240,6 +251,7 @@ test('citizens can download response attachments but never internal note attachm
     foreach (['note' => 'interno.pdf', 'response' => 'respuesta.pdf'] as $type => $file) {
         $this->actingAs($staff)->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), [
             'type' => $type,
+            'take' => '1',
             'body' => 'Mensaje con un archivo adjunto.',
             'attachments' => [UploadedFile::fake()->create($file, 10, 'application/pdf')],
         ])->assertSessionHasNoErrors();
@@ -254,6 +266,16 @@ test('citizens can download response attachments but never internal note attachm
     $this->withSession(["tracking.{$radicado}" => true])
         ->get(portal($tenant, "consultar/{$radicado}/adjuntos/{$ids['respuesta.pdf']}"))
         ->assertOk();
+
+    // El correo lleva la respuesta y solo su archivo, nunca el de la nota interna.
+    Notification::assertSentOnDemand(PqrsRespondedNotification::class, function ($n, $channels, $notifiable) use ($tenant, $radicado) {
+        $mail = $tenant->run(fn () => $n->toMail($notifiable));
+
+        return count($mail->attachments) === 1
+            && $mail->attachments[0]['options']['as'] === 'respuesta.pdf'
+            && str_contains((string) $mail->introLines[1], 'Mensaje con un archivo adjunto.')
+            && str_ends_with($mail->actionUrl, "consultar?radicado={$radicado}");
+    });
 });
 
 test('status changes follow the allowed transitions and are always recorded', function () {
@@ -277,7 +299,7 @@ test('status changes follow the allowed transitions and are always recorded', fu
     $this->actingAs($staff)->patch($status, ['status' => 'cerrada', 'reason' => 'Solicitud duplicada.'])->assertSessionHasNoErrors();
 
     // Una solicitud cerrada no se responde sin reabrirla.
-    $this->actingAs($staff)->post($activities, ['type' => 'response', 'body' => 'Respuesta tardía.'])->assertSessionHasErrors('body');
+    $this->actingAs($staff)->post($activities, ['type' => 'response', 'take' => '1', 'body' => 'Respuesta tardía.'])->assertSessionHasErrors('body');
 
     // No puede volver a "Radicada"; reabrir exige motivo.
     $this->actingAs($staff)->patch($status, ['status' => 'radicada'])->assertSessionHasErrors('status');
@@ -505,7 +527,7 @@ test('agents only see and manage pqrs from their own sedes', function () {
         'type' => 'note', 'body' => 'Revisando con la sede.',
     ])->assertSessionHasNoErrors();
     $this->actingAs($agente)->post(portal($tenant, "admin/pqrs/{$deNeiva}/actividades"), [
-        'type' => 'response', 'body' => 'Su caso fue resuelto por la sede Neiva.',
+        'type' => 'response', 'take' => '1', 'body' => 'Su caso fue resuelto por la sede Neiva.',
     ])->assertSessionHasNoErrors();
 
     // La de otra sede «no existe» para él: ni verla ni tocarla.
@@ -858,4 +880,108 @@ test('without the not-a-robot check enabled the form works as before', function 
     $this->get(portal($tenant, 'radicar'))
         ->assertInertia(fn ($page) => $page->where('captcha', false));
     $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+});
+
+test('only the person in charge answers and agents cannot take a pqrs from someone else', function () {
+    Notification::fake();
+    $tenant = makeCompany('cargo');
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    [$admin, $juan, $ana] = $tenant->run(fn () => [
+        User::first(),
+        makeStaff('juan', UserRole::Agente, [$neiva]),
+        makeStaff('ana', UserRole::Agente, [$neiva]),
+    ]);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+    $radicado = $tenant->run(fn () => Pqrs::sole()->radicado);
+    $reply = portal($tenant, "admin/pqrs/{$radicado}/actividades");
+
+    // Juan asume la solicitud al responder.
+    $this->actingAs($juan)->post($reply, ['type' => 'note', 'body' => 'Las notas no piden ser responsable.'])->assertSessionHasNoErrors();
+    $this->actingAs($juan)->post($reply, ['type' => 'response', 'take' => '1', 'body' => 'Primera respuesta al ciudadano.'])->assertSessionHasNoErrors();
+    expect($tenant->run(fn () => Pqrs::sole()->assigned_to))->toBe($juan->id);
+
+    // Ana no puede quitársela, ni siquiera aceptando ser responsable.
+    $this->actingAs($ana)->post($reply, ['type' => 'response', 'take' => '1', 'body' => 'Intento responder la de Juan.'])->assertSessionHasErrors('body');
+    expect($tenant->run(fn () => Pqrs::sole()->assigned_to))->toBe($juan->id);
+
+    // El administrador sí puede asumirla para responder.
+    $this->actingAs($admin)->post($reply, ['type' => 'response', 'take' => '1', 'body' => 'Complemento de la respuesta.'])->assertSessionHasNoErrors();
+    expect($tenant->run(fn () => Pqrs::sole()->assigned_to))->toBe($admin->id);
+});
+
+test('the company admin changes its own colors and agents cannot', function () {
+    $tenant = makeCompany('pintura');
+    [$admin, $agente] = $tenant->run(fn () => [User::first(), makeStaff('pedro')]);
+    $colors = ['primary_color' => '#15803D', 'accent_color' => '#e11d48', 'panel_color' => '#064e3b', 'panel_accent' => '#1d4ed8'];
+
+    $this->actingAs($agente)->get(portal($tenant, 'admin/colores'))->assertForbidden();
+    $this->actingAs($agente)->put(portal($tenant, 'admin/colores'), $colors)->assertForbidden();
+
+    $this->actingAs($admin)->get(portal($tenant, 'admin/colores'))
+        ->assertInertia(fn ($page) => $page->component('tenant/admin/colors')->has('colors.panel_color'));
+    $this->actingAs($admin)->put(portal($tenant, 'admin/colores'), [...$colors, 'panel_color' => 'verde'])
+        ->assertSessionHasErrors('panel_color');
+    $this->actingAs($admin)->put(portal($tenant, 'admin/colores'), $colors)->assertSessionHasNoErrors();
+
+    $theme = Tenant::find('pintura')->resolvedTheme();
+
+    expect($theme)->toMatchArray(['primary_color' => '#15803d', 'panel_color' => '#064e3b', 'panel_accent' => '#1d4ed8'])
+        ->and($theme['layout'])->toBe('corporate');
+});
+
+test('new pqrs are emailed to the agents of their sede', function () {
+    Notification::fake();
+    $tenant = makeCompany('avisos');
+    [$admin, $juan, $ana, $luis, $inactivo, $neiva, $yopal] = $tenant->run(function () {
+        $neiva = makeSede('Neiva');
+        $yopal = makeSede('Yopal');
+        $inactivo = makeStaff('inactivo', UserRole::Agente, [$neiva]);
+        $inactivo->forceFill(['is_active' => false])->save();
+
+        return [
+            User::first(),
+            makeStaff('juan', UserRole::Agente, [$neiva, $yopal]),
+            makeStaff('ana', UserRole::Agente, [$neiva]),
+            makeStaff('luis', UserRole::Agente, [$yopal]),
+            $inactivo, $neiva, $yopal,
+        ];
+    });
+
+    // A Neiva: le llega a Juan (Neiva y Yopal) y a Ana, no a Luis ni al inactivo.
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+    Notification::assertSentTo([$juan, $ana], NewPqrsForSedeNotification::class);
+    Notification::assertNotSentTo([$luis, $inactivo, $admin], NewPqrsForSedeNotification::class);
+
+    // A Yopal: a Juan y a Luis.
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $yopal->id]));
+    Notification::assertSentToTimes($juan, NewPqrsForSedeNotification::class, 2);
+    Notification::assertSentTo($luis, NewPqrsForSedeNotification::class);
+    Notification::assertSentToTimes($ana, NewPqrsForSedeNotification::class, 1);
+
+    // Si Ana la traslada a Yopal, avisa a los de Yopal pero no a ella.
+    $radicado = $tenant->run(fn () => Pqrs::where('sede_id', $neiva->id)->value('radicado'));
+    $this->actingAs($ana)->patch(portal($tenant, "admin/pqrs/{$radicado}/sede"), ['sede_id' => $yopal->id])
+        ->assertSessionHasNoErrors();
+    Notification::assertSentToTimes($luis, NewPqrsForSedeNotification::class, 2);
+    Notification::assertSentToTimes($ana, NewPqrsForSedeNotification::class, 1);
+
+    // Una sede sin agentes avisa al administrador.
+    $vacia = $tenant->run(fn () => makeSede('Garzón'));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $vacia->id]));
+    Notification::assertSentTo($admin, NewPqrsForSedeNotification::class);
+});
+
+test('companies without sedes email new pqrs to their admins', function () {
+    Notification::fake();
+    $tenant = makeCompany('sinsedes');
+    $admin = $tenant->run(fn () => User::first());
+
+    $this->post(portal($tenant, 'radicar'), validSubmission());
+
+    Notification::assertSentTo($admin, NewPqrsForSedeNotification::class, function ($n, $channels, $notifiable) {
+        $mail = $n->toMail($notifiable);
+
+        return str_contains($mail->subject, 'Nueva PQRS') && $mail->actionUrl !== null;
+    });
 });

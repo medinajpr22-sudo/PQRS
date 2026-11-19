@@ -138,6 +138,11 @@ export default function PqrsShow({
     const [pending, setPending] = useState<StatusTransition | null>(null);
     const [reason, setReason] = useState('');
     const [saving, setSaving] = useState(false);
+    const [confirmTake, setConfirmTake] = useState(false);
+    const [assignOpen, setAssignOpen] = useState(false);
+    const isMine = pqrs.assignee?.id === auth.user.id;
+    // Un agente solo puede asumir una solicitud libre; el administrador, cualquiera.
+    const canTake = !isMine && (!pqrs.assignee || canAssignOthers);
     const isOpen = pqrs.status === 'radicada' || pqrs.status === 'en_tramite';
     const isClosed = pqrs.status === 'cerrada';
     // Una PQRS cerrada solo admite notas internas: hay que reabrirla para
@@ -312,6 +317,65 @@ export default function PqrsShow({
                     </DialogContent>
                 </Dialog>
 
+                <Dialog open={confirmTake} onOpenChange={setConfirmTake}>
+                    <DialogContent>
+                        <DialogTitle>¿Quieres ser el responsable?</DialogTitle>
+                        <DialogDescription>
+                            {pqrs.assignee
+                                ? `Esta solicitud está a cargo de ${pqrs.assignee.name}. Para responder, pasará a estar a tu cargo.`
+                                : 'Para responder al ciudadano debes ser el responsable de esta solicitud. Quedará a tu cargo y se enviará tu respuesta.'}
+                        </DialogDescription>
+                        <DialogFooter className="gap-2">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => setConfirmTake(false)}
+                            >
+                                Cancelar
+                            </Button>
+                            <Button type="submit" form="pqrs-reply">
+                                <UserCheck />
+                                Ser responsable y enviar
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {canAssignOthers && (
+                    <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+                        <DialogContent>
+                            <DialogTitle>Asignar a otra persona</DialogTitle>
+                            <DialogDescription>
+                                Solo aparecen las personas con acceso a la sede
+                                de esta solicitud. Recibirán un correo con el
+                                aviso.
+                            </DialogDescription>
+                            <NativeSelect
+                                aria-label="Responsable"
+                                value={pqrs.assignee?.id ?? ''}
+                                onChange={(e) => {
+                                    assign(
+                                        e.target.value
+                                            ? Number(e.target.value)
+                                            : null,
+                                    );
+                                    setAssignOpen(false);
+                                }}
+                            >
+                                <option value="">Sin responsable</option>
+                                {staffOptions.map((s) => (
+                                    <option key={s.value} value={s.value}>
+                                        {s.label}
+                                        {s.value === auth.user.id
+                                            ? ' (yo)'
+                                            : ''}
+                                    </option>
+                                ))}
+                            </NativeSelect>
+                        </DialogContent>
+                    </Dialog>
+                )}
+
                 <div className="grid gap-6 lg:grid-cols-3">
                     <div className="space-y-6 lg:col-span-2">
                         <Card>
@@ -386,8 +450,10 @@ export default function PqrsShow({
                                     {...PqrsActivityController.store.form(
                                         pqrs.radicado,
                                     )}
+                                    id="pqrs-reply"
                                     options={{ preserveScroll: true }}
                                     resetOnSuccess
+                                    onFinish={() => setConfirmTake(false)}
                                     className="space-y-3"
                                 >
                                     {({ processing, errors }) => (
@@ -397,6 +463,15 @@ export default function PqrsShow({
                                                 name="type"
                                                 value={mode}
                                             />
+                                            {mode === 'response' &&
+                                                !isMine &&
+                                                canTake && (
+                                                    <input
+                                                        type="hidden"
+                                                        name="take"
+                                                        value="1"
+                                                    />
+                                                )}
                                             <Textarea
                                                 name="body"
                                                 rows={6}
@@ -417,8 +492,36 @@ export default function PqrsShow({
                                                     className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium"
                                                 />
                                                 <Button
-                                                    type="submit"
-                                                    disabled={processing}
+                                                    type={
+                                                        mode === 'response' &&
+                                                        !isMine
+                                                            ? 'button'
+                                                            : 'submit'
+                                                    }
+                                                    disabled={
+                                                        processing ||
+                                                        (mode === 'response' &&
+                                                            !isMine &&
+                                                            !canTake)
+                                                    }
+                                                    onClick={(e) => {
+                                                        if (
+                                                            mode !==
+                                                                'response' ||
+                                                            isMine
+                                                        ) {
+                                                            return;
+                                                        }
+
+                                                        // Antes de pedir que sea responsable, revisa que el mensaje esté completo.
+                                                        if (
+                                                            e.currentTarget.form?.reportValidity()
+                                                        ) {
+                                                            setConfirmTake(
+                                                                true,
+                                                            );
+                                                        }
+                                                    }}
                                                 >
                                                     {processing ? (
                                                         <Spinner />
@@ -442,6 +545,18 @@ export default function PqrsShow({
                                                     )?.[1]
                                                 }
                                             />
+                                            {mode === 'response' &&
+                                                !isMine &&
+                                                !canTake && (
+                                                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                                                        Esta solicitud está a
+                                                        cargo de{' '}
+                                                        {pqrs.assignee?.name}.
+                                                        Solo esa persona o un
+                                                        administrador pueden
+                                                        responderla.
+                                                    </p>
+                                                )}
                                             <p className="text-xs text-muted-foreground">
                                                 {mode === 'response'
                                                     ? `La respuesta se envía a ${pqrs.requester_email}, queda visible en la consulta pública y la solicitud pasa a «Respondida».`
@@ -559,62 +674,41 @@ export default function PqrsShow({
                                 <CardTitle>Responsable</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-3 text-sm">
-                                {canAssignOthers ? (
-                                    <NativeSelect
-                                        aria-label="Asignar responsable"
-                                        value={pqrs.assignee?.id ?? ''}
-                                        onChange={(e) =>
-                                            assign(
-                                                e.target.value
-                                                    ? Number(e.target.value)
-                                                    : null,
-                                            )
-                                        }
-                                    >
-                                        <option value="">
-                                            Sin responsable
-                                        </option>
-                                        {staffOptions.map((s) => (
-                                            <option
-                                                key={s.value}
-                                                value={s.value}
-                                            >
-                                                {s.label}
-                                                {s.value === auth.user.id
-                                                    ? ' (yo)'
-                                                    : ''}
-                                            </option>
-                                        ))}
-                                    </NativeSelect>
-                                ) : (
-                                    <>
-                                        <p className="flex items-center gap-2 font-medium">
-                                            <UserCheck className="size-4 text-muted-foreground" />
-                                            {pqrs.assignee?.name ??
-                                                'Sin responsable'}
-                                        </p>
-                                        {!pqrs.assignee && (
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    assign(auth.user.id)
-                                                }
-                                            >
-                                                Tomar esta solicitud
-                                            </Button>
-                                        )}
-                                        {pqrs.assignee?.id === auth.user.id && (
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() => assign(null)}
-                                            >
-                                                Soltar solicitud
-                                            </Button>
-                                        )}
-                                    </>
-                                )}
+                                <p className="flex items-center gap-2 font-medium">
+                                    <UserCheck className="size-4 text-muted-foreground" />
+                                    {pqrs.assignee
+                                        ? `${pqrs.assignee.name}${isMine ? ' (yo)' : ''}`
+                                        : 'Sin responsable'}
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                    {canTake && (
+                                        <Button
+                                            size="sm"
+                                            onClick={() => assign(auth.user.id)}
+                                        >
+                                            <UserCheck />
+                                            Ser responsable
+                                        </Button>
+                                    )}
+                                    {isMine && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => assign(null)}
+                                        >
+                                            Dejar de ser responsable
+                                        </Button>
+                                    )}
+                                    {canAssignOthers && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => setAssignOpen(true)}
+                                        >
+                                            Asignar a otra persona
+                                        </Button>
+                                    )}
+                                </div>
                                 <InputError message={errors.assigned_to} />
                             </CardContent>
                         </Card>

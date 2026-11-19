@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\PqrsStatus;
 use App\Enums\PqrsType;
+use App\Events\PqrsArrivedAtSede;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\Sede;
@@ -83,6 +84,9 @@ class PqrsService
 
         $this->safely(fn () => Notification::route('mail', $pqrs->requester_email)
             ->notify(new PqrsReceivedNotification($pqrs, $tenant)));
+
+        // Avisa al equipo de la sede (ver NotifySedeAgents).
+        PqrsArrivedAtSede::dispatch($pqrs, $tenant);
 
         return $pqrs;
     }
@@ -278,6 +282,10 @@ class PqrsService
                 $this->unassign($pqrs, $by, "Se quitó la asignación a {$assignee->name}: no tiene acceso a la sede «{$sede->name}».");
             }
         });
+
+        /** @var Tenant $tenant */
+        $tenant = tenant();
+        PqrsArrivedAtSede::dispatch($pqrs, $tenant, $by);
     }
 
     /**

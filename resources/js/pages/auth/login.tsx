@@ -21,8 +21,6 @@ export default function Login({ status, canResetPassword }: Props) {
         <>
             <Head title="Iniciar sesión" />
 
-            <PasskeyVerify />
-
             <Form
                 {...store.form()}
                 resetOnSuccess={['password']}
@@ -95,6 +93,9 @@ export default function Login({ status, canResetPassword }: Props) {
                     </>
                 )}
             </Form>
+
+            {/* El correo es la forma principal de entrar; la llave de acceso es opcional. */}
+            <PasskeyVerify position="after" />
 
             {status && (
                 <div className="mb-4 text-center text-sm font-medium text-green-600">
