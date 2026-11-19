@@ -10,6 +10,7 @@ use App\Services\TenantProvisioner;
 use App\Support\TenantDefaults;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -100,6 +101,25 @@ class TenantController extends Controller
         return back();
     }
 
+    /**
+     * Borra de la cola (pendientes y fallidos) los trabajos de una empresa.
+     */
+    private static function purgeQueuedJobs(string $tenantId): void
+    {
+        // El id de la empresa solo tiene minúsculas, números y guiones.
+        $needle = '%"tenant_id":"'.$tenantId.'"%';
+
+        $queue = config('queue.connections.database');
+        DB::connection($queue['connection'] ?? null)->table($queue['table'] ?? 'jobs')
+            ->where('payload', 'like', $needle)
+            ->delete();
+
+        $failed = config('queue.failed');
+        DB::connection($failed['database'] ?? null)->table($failed['table'] ?? 'failed_jobs')
+            ->where('payload', 'like', $needle)
+            ->delete();
+    }
+
     public function destroy(Request $request, Tenant $tenant): RedirectResponse
     {
         if ($request->input('confirmation') !== $tenant->id) {
@@ -111,11 +131,20 @@ class TenantController extends Controller
         $name = $tenant->name;
         $storageDir = storage_path(config('tenancy.filesystem.suffix_base').$tenant->id);
 
-        // Elimina el registro, sus dominios y su base de datos (TenantDeleted → DeleteDatabase).
+        // 1. Primero la base de datos: si no se pudiera borrar, la empresa
+        //    sigue en el panel y se puede reintentar (no queda una base
+        //    huérfana con datos de pacientes).
+        $tenant->database()->manager()->deleteDatabase($tenant);
+
+        // 2. El registro y sus dominios (TenantDeleted vuelve a intentar
+        //    borrar la base, que ya no existe).
         $tenant->delete();
 
+        // 3. Sus archivos y los correos que tenía en cola (ya no se pueden
+        //    enviar y guardan datos de ciudadanos).
         Storage::disk('public')->deleteDirectory("tenants/{$tenant->id}");
         File::deleteDirectory($storageDir);
+        self::purgeQueuedJobs($tenant->id);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Empresa «{$name}» eliminada."]);
 

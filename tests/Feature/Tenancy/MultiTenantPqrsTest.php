@@ -17,9 +17,12 @@ use App\Notifications\PqrsAssignedNotification;
 use App\Notifications\PqrsReceivedNotification;
 use App\Notifications\PqrsRespondedNotification;
 use App\Services\TenantProvisioner;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Crea una empresa de prueba con su propia base de datos.
@@ -79,6 +82,7 @@ function validSubmission(array $overrides = []): array
         'requester_document_type' => 'CC',
         'requester_document' => '123456789',
         'requester_email' => 'Ciudadano@Example.com',
+        'requester_is_affected' => '1',
         'subject' => 'Solicitud de información',
         'description' => 'Necesito información detallada sobre el estado de mi trámite.',
         'privacy' => '1',
@@ -88,8 +92,13 @@ function validSubmission(array $overrides = []): array
 afterEach(function () {
     tenancy()->end();
 
-    // Borra las bases de datos de prueba de cada empresa.
-    Tenant::all()->each->delete();
+    // Borra las bases de datos de prueba de cada empresa y sus archivos
+    // (adjuntos y logos), para no dejar basura en storage/.
+    Tenant::all()->each(function (Tenant $tenant) {
+        File::deleteDirectory(storage_path(config('tenancy.filesystem.suffix_base').$tenant->id));
+        File::deleteDirectory(storage_path("app/public/tenants/{$tenant->id}"));
+        $tenant->delete();
+    });
 });
 
 test('super admin can create a company with its own database and admin user', function () {
@@ -113,7 +122,8 @@ test('super admin can create a company with its own database and admin user', fu
     expect($tenant->primaryDomain())->toBe('empresa-nueva.localhost')
         ->and($tenant->radicado_prefix)->toBe('ENS')
         ->and($tenant->databaseName())->toBe('pqrs_empresa_nueva')
-        ->and(file_exists(database_path('pqrs_empresa_nueva')))->toBeTrue()
+        // Vale para SQLite (archivo) y PostgreSQL (CREATE DATABASE).
+        ->and($tenant->database()->manager()->databaseExists('pqrs_empresa_nueva'))->toBeTrue()
         ->and($tenant->run(fn () => User::where('email', 'ana@empresa-nueva.test')->exists()))->toBeTrue();
 
     // El usuario de la empresa no existe en la base central.
@@ -984,4 +994,367 @@ test('companies without sedes email new pqrs to their admins', function () {
 
         return str_contains($mail->subject, 'Nueva PQRS') && $mail->actionUrl !== null;
     });
+});
+
+test('health companies record the patient, service and attention date', function () {
+    Notification::fake();
+    $tenant = makeCompany('renal', ['services' => ['Hemodiálisis', 'Nefropediatría']]);
+
+    $this->get(portal($tenant, 'radicar'))->assertInertia(fn ($page) => $page
+        ->where('schema.health_data', true)
+        ->where('schema.services', ['Hemodiálisis', 'Nefropediatría'])
+        ->has('patientDocumentTypes')
+        ->has('healthRegimes', 4));
+
+    // Si lo radica otra persona, los datos del paciente son obligatorios.
+    // (Pocos envíos: el portal permite 5 por minuto.)
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'requester_is_affected' => '0',
+        'service' => 'Cirugía',
+        'attended_on' => now()->addDay()->toDateString(),
+    ]))->assertSessionHasErrors(['affected_name', 'affected_document', 'service', 'attended_on']);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_is_affected' => null]))
+        ->assertSessionHasErrors('requester_is_affected');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'requester_is_affected' => '0',
+        'requester_relationship' => 'Madre',
+        'affected_name' => 'Sofía Pérez',
+        'affected_document_type' => 'RC',
+        'affected_document' => '1.105.123.456',
+        'affected_email' => 'Sofia@Example.com',
+        'eps' => 'Nueva EPS',
+        'health_regime' => 'subsidiado',
+        'service' => 'Nefropediatría',
+        'attended_on' => '2026-11-10',
+    ]))->assertSessionHasNoErrors();
+
+    // Si el solicitante es el afectado, no se guardan datos de otra persona.
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'affected_name' => 'No debería guardarse',
+        'service' => 'Hemodiálisis',
+    ]))->assertSessionHasNoErrors();
+
+    [$forOther, $forSelf] = $tenant->run(fn () => Pqrs::orderBy('id')->get()->all());
+
+    expect($forOther->requester_is_affected)->toBeFalse()
+        ->and($forOther->requester_relationship)->toBe('Madre')
+        ->and($forOther->affected_name)->toBe('Sofía Pérez')
+        ->and($forOther->affected_document)->toBe('1105123456')
+        ->and($forOther->affected_email)->toBe('sofia@example.com')
+        ->and($forOther->health_regime)->toBe('subsidiado')
+        ->and($forOther->service)->toBe('Nefropediatría')
+        ->and($forOther->attended_on->toDateString())->toBe('2026-11-10')
+        ->and($forSelf->requester_is_affected)->toBeTrue()
+        ->and($forSelf->affected_name)->toBeNull()
+        ->and($forSelf->service)->toBe('Hemodiálisis');
+
+    // El equipo ve al paciente en el detalle.
+    $admin = $tenant->run(fn () => User::first());
+    $this->actingAs($admin)->get(portal($tenant, 'admin/pqrs/'.$forOther->radicado))
+        ->assertInertia(fn ($page) => $page
+            ->where('pqrs.health.affected_name', 'Sofía Pérez')
+            ->where('pqrs.health.affected_document', 'Registro civil 1105123456')
+            ->where('pqrs.health.health_regime', 'Subsidiado')
+            ->where('pqrs.health.attended_on', '2026-11-10'));
+});
+
+test('companies outside health do not ask for patient data', function () {
+    Notification::fake();
+    $tenant = makeCompany('tienda', ['health_data' => false]);
+
+    $data = validSubmission();
+    unset($data['requester_is_affected']);
+
+    $this->post(portal($tenant, 'radicar'), [...$data, 'eps' => 'Nueva EPS'])->assertSessionHasNoErrors();
+
+    $pqrs = $tenant->run(fn () => Pqrs::sole());
+    expect($pqrs->requester_is_affected)->toBeNull()->and($pqrs->eps)->toBeNull();
+});
+
+test('document numbers must match their type', function () {
+    Notification::fake();
+    $tenant = makeCompany('docs');
+
+    // Así llegaba el spam: «CC gyh5ty».
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_document' => 'gyh5ty']))
+        ->assertSessionHasErrors(['requester_document' => 'El número de documento solo puede tener números, sin letras.']);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_document_type' => 'PA', 'requester_document' => 'AB-12']))
+        ->assertSessionHasErrors('requester_document');
+
+    // Puntos y espacios se quitan; el NIT admite el dígito de verificación.
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_document' => '1.075 234.567']))->assertSessionHasNoErrors();
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_document_type' => 'NIT', 'requester_document' => '900.123.456-7']))->assertSessionHasNoErrors();
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_document_type' => 'PA', 'requester_document' => 'ab123456']))->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::orderBy('id')->pluck('requester_document')->all()))
+        ->toBe(['1075234567', '900123456-7', 'AB123456']);
+});
+
+test('the hidden trap field stops form robots', function () {
+    Notification::fake();
+    $tenant = makeCompany('trampa');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['website' => 'http://spam.example']))
+        ->assertSessionHasErrors('altcha');
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(0);
+});
+
+test('the super admin configures the health section and services', function () {
+    $tenant = makeCompany('config');
+    $schema = $tenant->resolvedFormSchema();
+
+    $this->actingAs(User::factory()->create())
+        ->put(route('tenants.form.update', $tenant), [
+            ...$schema,
+            'health_data' => false,
+            'services' => ['Hemodiálisis', 'hemodiálisis'],
+        ])
+        ->assertSessionHasErrors('services.1');
+
+    $this->put(route('tenants.form.update', $tenant), [
+        ...$schema,
+        'health_data' => false,
+        'services' => ['Hemodiálisis', 'Consulta externa'],
+    ])->assertSessionHasNoErrors();
+
+    $saved = $tenant->fresh()->resolvedFormSchema();
+    expect($saved['health_data'])->toBeFalse()
+        ->and($saved['services'])->toBe(['Hemodiálisis', 'Consulta externa']);
+});
+
+test('companies can have a browser icon separate from their logo', function () {
+    Storage::fake('public');
+    $superAdmin = User::factory()->create();
+    $tenant = makeCompany('icono');
+    // PNG real de 1×1 px (las pruebas no tienen GD para generar imágenes).
+    $png = fn (string $name) => UploadedFile::fake()->createWithContent($name, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='));
+    // Se arma antes: tras visitar el portal, route() usaría el dominio de la empresa.
+    $update = route('tenants.theme.update', $tenant);
+    $base = ['layout' => 'corporate', 'primary_color' => '#1d4ed8', 'accent_color' => '#f59e0b', 'font' => 'circe-rounded', 'hero_title' => 'PQRS'];
+
+    // Sin ícono, la pestaña usa el logo.
+    $this->actingAs($superAdmin)
+        ->post($update, [...$base, 'logo' => $png('logo.png')])
+        ->assertSessionHasNoErrors();
+    $logo = Tenant::find('icono')->resolvedTheme()['logo_url'];
+    $this->get(portal($tenant))->assertSee('<link rel="icon" href="'.$logo.'">', false);
+
+    // Con ícono, la pestaña usa el ícono y el logo no cambia.
+    $this->post($update, [...$base, 'icon' => $png('icono.png')])
+        ->assertSessionHasNoErrors();
+    $theme = Tenant::find('icono')->resolvedTheme();
+    expect($theme['logo_url'])->toBe($logo)->and($theme['icon_url'])->not->toBeNull();
+    Storage::disk('public')->assertExists($theme['icon_path']);
+    tenancy()->end(); // Que el portal vuelva a leer la empresa con su ícono nuevo.
+    $this->get(portal($tenant))
+        ->assertSee('<link rel="icon" href="'.$theme['icon_url'].'">', false)
+        ->assertSee('<link rel="apple-touch-icon" href="'.$theme['icon_url'].'">', false);
+
+    // SVG no: se serviría desde nuestro dominio y podría traer scripts.
+    $this->post($update, [...$base, 'icon' => UploadedFile::fake()->create('icono.svg', 2, 'image/svg+xml')])
+        ->assertSessionHasErrors('icon');
+
+    // Quitar el ícono borra el archivo y la pestaña vuelve al logo.
+    $this->post($update, [...$base, 'remove_icon' => '1'])->assertSessionHasNoErrors();
+    Storage::disk('public')->assertMissing($theme['icon_path']);
+    expect(Tenant::find('icono')->resolvedTheme())
+        ->icon_url->toBeNull()
+        ->logo_url->toBe($logo);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Revisión de lógica: responsables, concurrencia, consulta y correos
+|--------------------------------------------------------------------------
+*/
+
+test('answering a pqrs that was just closed does not change who is in charge', function () {
+    Notification::fake();
+    $tenant = makeCompany('atomica');
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    [$admin, $juan] = $tenant->run(fn () => [User::first(), makeStaff('juan', UserRole::Agente, [$neiva])]);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+    $radicado = $tenant->run(fn () => Pqrs::sole()->radicado);
+    $reply = portal($tenant, "admin/pqrs/{$radicado}/actividades");
+
+    $this->actingAs($juan)->post($reply, ['type' => 'response', 'take' => '1', 'body' => 'Respuesta de Juan al ciudadano.'])->assertSessionHasNoErrors();
+    $this->actingAs($juan)->patch(portal($tenant, "admin/pqrs/{$radicado}/estado"), ['status' => 'cerrada'])->assertSessionHasNoErrors();
+
+    // El administrador responde desde una pantalla vieja: ya estaba cerrada.
+    $this->actingAs($admin)->post($reply, ['type' => 'response', 'take' => '1', 'body' => 'Respuesta que ya no aplica.'])
+        ->assertSessionHasErrors('body');
+
+    $pqrs = $tenant->run(fn () => Pqrs::sole());
+    expect($pqrs->assigned_to)->toBe($juan->id)
+        ->and($pqrs->status)->toBe(PqrsStatus::Cerrada)
+        ->and($tenant->run(fn () => $pqrs->activities()->where('type', 'response')->count()))->toBe(1);
+});
+
+test('only the person in charge or an admin changes the status', function () {
+    Notification::fake();
+    $tenant = makeCompany('estados');
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    [$admin, $juan, $ana] = $tenant->run(fn () => [
+        User::first(),
+        makeStaff('juan', UserRole::Agente, [$neiva]),
+        makeStaff('ana', UserRole::Agente, [$neiva]),
+    ]);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+    $radicado = $tenant->run(fn () => Pqrs::sole()->radicado);
+    $status = portal($tenant, "admin/pqrs/{$radicado}/estado");
+
+    // Sin responsable, cualquier agente de la sede puede moverla.
+    $this->actingAs($ana)->patch($status, ['status' => 'en_tramite'])->assertSessionHasNoErrors();
+
+    $tenant->run(fn () => Pqrs::sole()->forceFill(['assigned_to' => $juan->id])->save());
+
+    // Con responsable, Ana ya no puede cerrarla; el administrador sí.
+    $this->actingAs($ana)->get(portal($tenant, "admin/pqrs/{$radicado}"))
+        ->assertInertia(fn ($page) => $page->where('canChangeStatus', false));
+    $this->actingAs($ana)->patch($status, ['status' => 'cerrada', 'reason' => 'Lo cierro yo.'])->assertSessionHasErrors('status');
+    expect($tenant->run(fn () => Pqrs::sole()->status))->toBe(PqrsStatus::EnTramite);
+
+    $this->actingAs($admin)->patch($status, ['status' => 'cerrada', 'reason' => 'Solicitud duplicada.'])->assertSessionHasNoErrors();
+    expect($tenant->run(fn () => Pqrs::sole()->status))->toBe(PqrsStatus::Cerrada);
+});
+
+test('deactivating an agent frees their open pqrs for the rest of the sede', function () {
+    Notification::fake();
+    $tenant = makeCompany('relevo');
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    [$admin, $juan] = $tenant->run(fn () => [User::first(), makeStaff('juan', UserRole::Agente, [$neiva])]);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+
+    $tenant->run(function () use ($juan) {
+        Pqrs::query()->update(['assigned_to' => $juan->id]);
+        Pqrs::orderBy('id')->first()->forceFill(['status' => PqrsStatus::Respondida, 'responded_at' => now()])->save();
+    });
+
+    $this->actingAs($admin)->put(portal($tenant, "admin/usuarios/{$juan->id}"), [
+        'name' => 'Juan', 'email' => 'juan@staff.test', 'role' => 'agente', 'is_active' => false, 'sedes' => [$neiva->id],
+    ])->assertSessionHasNoErrors();
+
+    [$responded, $open] = $tenant->run(fn () => Pqrs::orderBy('id')->get()->all());
+    expect($open->assigned_to)->toBeNull()
+        ->and($responded->assigned_to)->toBe($juan->id);
+
+    // Si la respondida se reabre, también queda libre.
+    $this->actingAs($admin)->patch(portal($tenant, "admin/pqrs/{$responded->radicado}/estado"), [
+        'status' => 'en_tramite', 'reason' => 'El ciudadano pidió ampliar la respuesta.',
+    ])->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => $responded->fresh()->assigned_to))->toBeNull();
+});
+
+test('public tracking limits guesses and does not reveal which radicados exist', function () {
+    Notification::fake();
+    $tenant = makeCompany('rastreo');
+    $this->post(portal($tenant, 'radicar'), validSubmission());
+    $radicado = $tenant->run(fn () => Pqrs::sole()->radicado);
+
+    // Uno ajeno (existe, sin haberlo consultado) y uno que no existe: igual.
+    $this->get(portal($tenant, "consultar/{$radicado}"))->assertRedirect(portal($tenant, 'consultar'));
+    $this->get(portal($tenant, 'consultar/RAS-2026-99999'))->assertRedirect(portal($tenant, 'consultar'));
+    $this->get(portal($tenant, 'consultar/RAS-2026-99999/adjuntos/1'))->assertRedirect(portal($tenant, 'consultar'));
+
+    // Probar radicados con el correo de otra persona se bloquea.
+    foreach (range(1, 8) as $i) {
+        $this->post(portal($tenant, 'consultar'), ['radicado' => "RAS-2026-0000{$i}9", 'email' => 'ciudadano@example.com'])
+            ->assertSessionHasErrors('radicado');
+    }
+
+    $this->post(portal($tenant, 'consultar'), ['radicado' => $radicado, 'email' => 'ciudadano@example.com'])
+        ->assertSessionHasErrors('radicado');
+    expect(session('errors')->first('radicado'))->toContain('Demasiados intentos');
+});
+
+test('odd urls answer 404 or show the page instead of failing', function () {
+    $tenant = makeCompany('urls');
+    $admin = $tenant->run(fn () => User::first());
+
+    $this->get(portal($tenant, 'consultar?radicado[]=x'))->assertOk();
+    $this->get(portal($tenant, 'radicar?riesgo[]=x&tipo[]=y'))->assertOk();
+    $this->actingAs($admin)->get(portal($tenant, 'admin/pqrs?status[]=x&search[]=y&type[]=z'))->assertOk();
+    $this->actingAs($admin)->put(portal($tenant, 'admin/usuarios/abc'), [])->assertNotFound();
+    $this->actingAs($admin)->put(portal($tenant, 'admin/sedes/abc'), [])->assertNotFound();
+});
+
+test('what the citizen types never becomes a link or image in the emails', function () {
+    Notification::fake();
+    $tenant = makeCompany('correo');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'requester_name' => 'Juan [Verifique su cuenta](https://evil.example/login)',
+        'subject' => "Consulta\n\n![x](https://evil.example/p.png) [clic](https://evil.example)",
+    ]))->assertSessionHasNoErrors();
+
+    $html = null;
+    Notification::assertSentOnDemand(PqrsReceivedNotification::class, function ($notification, $channels, $notifiable) use (&$html) {
+        $html = (string) $notification->toMail($notifiable)->render();
+
+        return true;
+    });
+
+    expect($html)->toContain('Verifique su cuenta')
+        ->not->toContain('href="https://evil.example')
+        ->not->toContain('src="https://evil.example')
+        ->and($tenant->run(fn () => Pqrs::sole()->subject))->not->toContain("\n");
+});
+
+test('the dashboard computes the on-time rate in the database', function () {
+    $tenant = makeCompany('tasa');
+    $admin = $tenant->run(fn () => User::first());
+
+    $tenant->run(function () {
+        $base = ['type' => 'peticion', 'status' => PqrsStatus::Respondida, 'requester_name' => 'X', 'requester_email' => 'x@example.com', 'subject' => 'S', 'description' => 'D'];
+        // A tiempo: respondida 2 días después, vencía en 10.
+        Pqrs::create([...$base, 'radicado' => 'TAS-1'])->forceFill([
+            'created_at' => now()->subDays(10), 'responded_at' => now()->subDays(8), 'due_at' => now(),
+        ])->save();
+        // Tarde: respondida 4 días después, vencía en 1.
+        Pqrs::create([...$base, 'radicado' => 'TAS-2'])->forceFill([
+            'created_at' => now()->subDays(10), 'responded_at' => now()->subDays(6), 'due_at' => now()->subDays(9),
+        ])->save();
+    });
+
+    $this->actingAs($admin)->get(portal($tenant, 'admin'))
+        ->assertInertia(fn ($page) => $page
+            ->where('stats.on_time_rate', 50)
+            ->where('stats.avg_response_days', 3));
+});
+
+test('deleting a company removes its database, files and pending emails', function () {
+    $tenant = makeCompany('borrar');
+    $database = $tenant->databaseName();
+    $storage = storage_path(config('tenancy.filesystem.suffix_base').'borrar');
+    File::ensureDirectoryExists("{$storage}/app/pqrs");
+    File::put("{$storage}/app/pqrs/soporte.txt", 'x');
+
+    $job = fn (string $id) => ['queue' => 'default', 'payload' => json_encode(['uuid' => $id, 'tenant_id' => $id]), 'attempts' => 0, 'available_at' => time(), 'created_at' => time()];
+    DB::table('jobs')->insert([$job('borrar'), $job('otra')]);
+
+    $this->actingAs(User::factory()->create())
+        ->delete(route('tenants.destroy', $tenant), ['confirmation' => 'borrar'])
+        ->assertRedirect(route('tenants.index'));
+
+    expect(Tenant::find('borrar'))->toBeNull()
+        ->and($tenant->database()->manager()->databaseExists($database))->toBeFalse()
+        ->and(File::exists($storage))->toBeFalse()
+        ->and(DB::table('jobs')->pluck('payload')->all())->toBe([json_encode(['uuid' => 'otra', 'tenant_id' => 'otra'])]);
+});
+
+test('the seeder never creates the super admin with the known password in production', function () {
+    app()->instance('env', 'production');
+    app(DatabaseSeeder::class)->run();
+    expect(User::where('email', 'admin@pqrs.test')->exists())->toBeFalse();
+
+    config(['pqrs.super_admin.password' => 'Una-Clave-Segura-2026']);
+    app(DatabaseSeeder::class)->run();
+    expect(User::where('email', 'admin@pqrs.test')->exists())->toBeTrue();
 });

@@ -31,8 +31,15 @@ class DashboardController extends Controller
         /** @return Builder<Pqrs> */
         $visible = fn (): Builder => Pqrs::query()->visibleTo($user);
 
-        $responded = $visible()->whereNotNull('responded_at')->get(['created_at', 'responded_at', 'due_at']);
-        $onTime = $responded->filter(fn (Pqrs $p) => $p->due_at === null || $p->responded_at->lte($p->due_at))->count();
+        // Se calcula en la base de datos (no se cargan miles de PQRS en memoria).
+        $responded = $visible()->whereNotNull('responded_at');
+        $respondedCount = (clone $responded)->count();
+        $onTime = (clone $responded)
+            ->where(fn ($q) => $q->whereNull('due_at')->orWhereColumn('responded_at', '<=', 'due_at'))
+            ->count();
+        $avgSeconds = $respondedCount > 0
+            ? (float) (clone $responded)->selectRaw(self::secondsToRespondSql($responded->getModel()->getConnection()->getDriverName()))->value('seconds')
+            : null;
 
         $byType = $visible()->selectRaw('type, count(*) as total')->groupBy('type')->pluck('total', 'type');
         $byStatus = $visible()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
@@ -42,12 +49,11 @@ class DashboardController extends Controller
                 'total' => $visible()->count(),
                 'open' => $visible()->open()->count(),
                 'overdue' => $visible()->overdue()->count(),
-                'due_soon' => $visible()->open()->whereBetween('due_at', [now(), now()->addDays(3)])->count(),
+                // Vencen de aquí al final del tercer día (los plazos vencen a las 23:59).
+                'due_soon' => $visible()->open()->whereBetween('due_at', [now(), now()->addDays(3)->endOfDay()])->count(),
                 'this_month' => $visible()->where('created_at', '>=', now()->startOfMonth())->count(),
-                'on_time_rate' => $responded->count() > 0 ? round($onTime / $responded->count() * 100) : null,
-                'avg_response_days' => $responded->count() > 0
-                    ? round($responded->avg(fn (Pqrs $p) => $p->created_at->diffInHours($p->responded_at) / 24), 1)
-                    : null,
+                'on_time_rate' => $respondedCount > 0 ? round($onTime / $respondedCount * 100) : null,
+                'avg_response_days' => $avgSeconds !== null ? round($avgSeconds / 86400, 1) : null,
             ],
             'byType' => $types->map(fn ($t) => [
                 'key' => $t['key'],
@@ -117,5 +123,20 @@ class DashboardController extends Controller
         }
 
         return $result;
+    }
+
+    /**
+     * Promedio de segundos entre la radicación y la primera respuesta
+     * (columna «seconds»), según el motor de base de datos.
+     *
+     * @return literal-string
+     */
+    private static function secondsToRespondSql(string $driver): string
+    {
+        return match ($driver) {
+            'pgsql' => 'avg(extract(epoch from (responded_at - created_at))) as seconds',
+            'mysql', 'mariadb' => 'avg(timestampdiff(second, created_at, responded_at)) as seconds',
+            default => 'avg((julianday(responded_at) - julianday(created_at)) * 86400) as seconds',
+        };
     }
 }

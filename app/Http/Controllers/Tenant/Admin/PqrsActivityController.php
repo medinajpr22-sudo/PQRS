@@ -10,7 +10,6 @@ use App\Services\PqrsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class PqrsActivityController extends Controller
@@ -31,26 +30,9 @@ class PqrsActivityController extends Controller
         $tenant = tenant();
         $user = $request->user();
 
-        // Solo el responsable responde al ciudadano. Quien no lo es debe
-        // asumirla primero: el formulario se lo pregunta antes de enviar.
-        if ($data['type'] === PqrsActivity::TYPE_RESPONSE && $pqrs->assigned_to !== $user->id) {
-            $canTake = $pqrs->assigned_to === null || $user->isAdmin();
-
-            if (! $canTake) {
-                throw ValidationException::withMessages([
-                    'body' => 'Esta solicitud está a cargo de '.($pqrs->assignee->name ?? 'otra persona').'. Solo esa persona o un administrador pueden responderla.',
-                ]);
-            }
-
-            if (! $request->boolean('take')) {
-                throw ValidationException::withMessages([
-                    'body' => 'Para responder debes ser el responsable de esta solicitud.',
-                ]);
-            }
-
-            $service->assign($tenant, $pqrs, $user, $user);
-        }
-
+        // Solo el responsable (o un administrador) responde al ciudadano.
+        // Quien no lo es debe asumirla («take»): el formulario se lo pregunta
+        // antes de enviar, y el servicio lo hace junto con la respuesta.
         $service->addActivity(
             $tenant,
             $pqrs,
@@ -58,6 +40,7 @@ class PqrsActivityController extends Controller
             $data['type'],
             $data['body'],
             array_values($request->file('attachments', [])),
+            take: $request->boolean('take'),
         );
 
         Inertia::flash('toast', [

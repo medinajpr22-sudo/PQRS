@@ -64,6 +64,20 @@ class PqrsService
                 'requester_document' => $data['requester_document'] ?? null,
                 'requester_email' => Str::lower($data['requester_email']),
                 'requester_phone' => $data['requester_phone'] ?? null,
+                // Datos de salud (solo si la empresa los pide). Si el
+                // solicitante es el afectado, los datos del afectado no
+                // llegan: la validación los descarta.
+                'requester_is_affected' => isset($data['requester_is_affected']) ? (bool) $data['requester_is_affected'] : null,
+                'requester_relationship' => $data['requester_relationship'] ?? null,
+                'affected_name' => $data['affected_name'] ?? null,
+                'affected_document_type' => $data['affected_document_type'] ?? null,
+                'affected_document' => $data['affected_document'] ?? null,
+                'affected_phone' => $data['affected_phone'] ?? null,
+                'affected_email' => isset($data['affected_email']) ? Str::lower($data['affected_email']) : null,
+                'eps' => $data['eps'] ?? null,
+                'health_regime' => $data['health_regime'] ?? null,
+                'service' => $data['service'] ?? null,
+                'attended_on' => $data['attended_on'] ?? null,
                 'subject' => $data['subject'],
                 'description' => $data['description'],
                 'extra_fields' => $extra,
@@ -95,52 +109,71 @@ class PqrsService
      * Cambio de estado hecho a mano por el personal.
      *
      * Solo se permiten los cambios definidos en PqrsStatus::manualTransitions().
-     * Reabrir o cerrar sin respuesta exige un motivo.
+     * Reabrir o cerrar sin respuesta exige un motivo. Si la solicitud tiene
+     * responsable, solo él o un administrador pueden cambiar su estado.
      */
     public function changeStatus(Pqrs $pqrs, PqrsStatus $status, User $user, ?string $reason = null): void
     {
-        $from = $pqrs->status;
-
-        if ($from === $status) {
-            return;
-        }
-
-        if (! $from->canTransitionTo($status)) {
-            throw ValidationException::withMessages([
-                'status' => $status === PqrsStatus::Respondida
-                    ? 'Para marcarla como «Respondida» envía una respuesta al ciudadano.'
-                    : "No es posible pasar de «{$from->label()}» a «{$status->label()}».",
-            ]);
-        }
-
         $reason = filled($reason) ? trim((string) $reason) : null;
 
-        if ($from->requiresReasonTo($status) && $reason === null) {
-            throw ValidationException::withMessages([
-                'reason' => 'Indica el motivo de este cambio de estado.',
-            ]);
-        }
+        DB::transaction(function () use ($pqrs, $status, $user, $reason) {
+            // Se relee bloqueada: si alguien la cambió mientras tanto, las
+            // reglas se revisan contra el estado real y no contra la pantalla.
+            $this->lockAndRefresh($pqrs);
 
-        DB::transaction(fn () => $this->transition($pqrs, $status, $user, $reason));
+            $from = $pqrs->status;
+
+            if ($from === $status) {
+                return;
+            }
+
+            $this->ensureInCharge($pqrs, $user, 'status', 'cambiar su estado');
+
+            if (! $from->canTransitionTo($status)) {
+                throw ValidationException::withMessages([
+                    'status' => $status === PqrsStatus::Respondida
+                        ? 'Para marcarla como «Respondida» envía una respuesta al ciudadano.'
+                        : "No es posible pasar de «{$from->label()}» a «{$status->label()}».",
+                ]);
+            }
+
+            if ($from->requiresReasonTo($status) && $reason === null) {
+                throw ValidationException::withMessages([
+                    'reason' => 'Indica el motivo de este cambio de estado.',
+                ]);
+            }
+
+            $this->transition($pqrs, $status, $user, $reason);
+
+            // Al reabrirla, si su responsable ya no puede atenderla (usuario
+            // desactivado o sin la sede), queda libre para que otro la tome.
+            if ($status->isOpen() && ! $from->isOpen()) {
+                $this->releaseIfUnavailable($pqrs, $user);
+            }
+        });
     }
 
     /**
      * Agrega una nota interna o una respuesta al ciudadano.
      *
+     * Solo el responsable (o un administrador) responde. Quien no lo es puede
+     * asumirla con $take: asumir y responder van juntos, así que si la
+     * respuesta no se puede enviar tampoco cambia el responsable.
+     *
      * @param  list<UploadedFile>  $files
      */
-    public function addActivity(Tenant $tenant, Pqrs $pqrs, User $user, string $type, string $body, array $files = []): PqrsActivity
+    public function addActivity(Tenant $tenant, Pqrs $pqrs, User $user, string $type, string $body, array $files = [], bool $take = false): PqrsActivity
     {
         $isResponse = $type === PqrsActivity::TYPE_RESPONSE;
 
-        if ($isResponse && $pqrs->status === PqrsStatus::Cerrada) {
-            throw ValidationException::withMessages([
-                'body' => 'La solicitud está cerrada. Reábrela (con un motivo) antes de enviar una nueva respuesta.',
-            ]);
-        }
-
         /** @var PqrsActivity $activity */
-        $activity = $this->transactionWithFiles(function (array &$stored) use ($pqrs, $user, $type, $body, $isResponse, $files) {
+        $activity = $this->transactionWithFiles(function (array &$stored) use ($pqrs, $user, $type, $body, $isResponse, $files, $take) {
+            $this->lockAndRefresh($pqrs);
+
+            if ($isResponse) {
+                $this->ensureCanRespond($pqrs, $user, $take);
+            }
+
             $activity = $pqrs->activities()->create([
                 'user_id' => $user->id,
                 'type' => $type,
@@ -179,55 +212,49 @@ class PqrsService
      */
     public function assign(Tenant $tenant, Pqrs $pqrs, ?User $assignee, User $by): void
     {
-        $current = $pqrs->assignee;
+        $changed = DB::transaction(function () use ($pqrs, $assignee, $by) {
+            // Bloqueada: si dos agentes la toman a la vez, el segundo ve que
+            // ya tiene responsable en lugar de quitársela al primero.
+            $this->lockAndRefresh($pqrs);
+            $current = $pqrs->assignee;
 
-        if ($current?->id === $assignee?->id) {
-            return;
-        }
+            if ($current?->id === $assignee?->id) {
+                return false;
+            }
 
-        if (! $by->isAdmin()) {
-            $takingFree = $assignee?->id === $by->id && $current === null;
-            $releasingOwn = $assignee === null && $current?->id === $by->id;
+            if (! $by->isAdmin()) {
+                $takingFree = $assignee?->id === $by->id && $current === null;
+                $releasingOwn = $assignee === null && $current?->id === $by->id;
 
-            if (! $takingFree && ! $releasingOwn) {
+                if (! $takingFree && ! $releasingOwn) {
+                    throw ValidationException::withMessages([
+                        'assigned_to' => $current !== null && $assignee?->id === $by->id
+                            ? "{$current->name} acaba de tomar esta solicitud."
+                            : 'Solo un administrador puede asignar o reasignar solicitudes de otros agentes.',
+                    ]);
+                }
+            }
+
+            if ($assignee !== null && ! $assignee->is_active) {
                 throw ValidationException::withMessages([
-                    'assigned_to' => 'Solo un administrador puede asignar o reasignar solicitudes de otros agentes.',
+                    'assigned_to' => 'Ese usuario está desactivado.',
                 ]);
             }
-        }
 
-        if ($assignee !== null && ! $assignee->is_active) {
-            throw ValidationException::withMessages([
-                'assigned_to' => 'Ese usuario está desactivado.',
-            ]);
-        }
+            if ($assignee !== null && ! $assignee->canAccessSede($pqrs->sede_id)) {
+                throw ValidationException::withMessages([
+                    'assigned_to' => "{$assignee->name} no tiene acceso a la sede de esta solicitud.",
+                ]);
+            }
 
-        if ($assignee !== null && ! $assignee->canAccessSede($pqrs->sede_id)) {
-            throw ValidationException::withMessages([
-                'assigned_to' => "{$assignee->name} no tiene acceso a la sede de esta solicitud.",
-            ]);
-        }
+            $this->recordAssignment($pqrs, $assignee, $by);
 
-        $body = match (true) {
-            $assignee === null => 'Se quitó la asignación a '.($current->name ?? '—').'.',
-            $current === null => "Solicitud asignada a {$assignee->name}.",
-            default => "Solicitud reasignada de {$current->name} a {$assignee->name}.",
-        };
-
-        DB::transaction(function () use ($pqrs, $assignee, $current, $by, $body) {
-            $pqrs->forceFill(['assigned_to' => $assignee?->id])->save();
-            $pqrs->setRelation('assignee', $assignee);
-
-            $pqrs->activities()->create([
-                'user_id' => $by->id,
-                'type' => PqrsActivity::TYPE_ASSIGNED,
-                'body' => $body,
-                'is_public' => false,
-                'meta' => ['from' => $current?->id, 'to' => $assignee?->id],
-            ]);
+            return true;
         });
 
-        if ($assignee !== null && $assignee->id !== $by->id) {
+        // Solo se avisa si queda trabajo por hacer: asignar una solicitud ya
+        // respondida o cerrada es para dejar constancia.
+        if ($changed && $assignee !== null && $assignee->id !== $by->id && $pqrs->status->isOpen()) {
             $this->safely(fn () => $assignee->notify(new PqrsAssignedNotification($pqrs, $tenant, $by)));
         }
     }
@@ -242,12 +269,6 @@ class PqrsService
      */
     public function changeSede(Pqrs $pqrs, Sede $sede, User $by, ?string $reason = null): void
     {
-        $from = $pqrs->sede;
-
-        if ($from?->id === $sede->id) {
-            return;
-        }
-
         if (! $sede->is_active) {
             throw ValidationException::withMessages([
                 'sede_id' => "La sede «{$sede->name}» está desactivada.",
@@ -256,15 +277,22 @@ class PqrsService
 
         $reason = filled($reason) ? trim((string) $reason) : null;
 
-        $body = $from === null
-            ? "Solicitud asignada a la sede «{$sede->name}»."
-            : "Solicitud trasladada de la sede «{$from->name}» a «{$sede->name}».";
+        $moved = DB::transaction(function () use ($pqrs, $sede, $by, $reason) {
+            $this->lockAndRefresh($pqrs);
+            $from = $pqrs->sede;
 
-        if ($reason !== null) {
-            $body .= "\nMotivo: {$reason}";
-        }
+            if ($from?->id === $sede->id) {
+                return false;
+            }
 
-        DB::transaction(function () use ($pqrs, $sede, $from, $by, $body, $reason) {
+            $body = $from === null
+                ? "Solicitud asignada a la sede «{$sede->name}»."
+                : "Solicitud trasladada de la sede «{$from->name}» a «{$sede->name}».";
+
+            if ($reason !== null) {
+                $body .= "\nMotivo: {$reason}";
+            }
+
             $pqrs->forceFill(['sede_id' => $sede->id])->save();
             $pqrs->setRelation('sede', $sede);
 
@@ -281,11 +309,38 @@ class PqrsService
             if ($assignee !== null && ! $assignee->canAccessSede($sede->id)) {
                 $this->unassign($pqrs, $by, "Se quitó la asignación a {$assignee->name}: no tiene acceso a la sede «{$sede->name}».");
             }
+
+            return true;
         });
 
-        /** @var Tenant $tenant */
-        $tenant = tenant();
-        PqrsArrivedAtSede::dispatch($pqrs, $tenant, $by);
+        // Se avisa a la sede nueva solo si la solicitud sigue abierta.
+        if ($moved && $pqrs->status->isOpen()) {
+            /** @var Tenant $tenant */
+            $tenant = tenant();
+            PqrsArrivedAtSede::dispatch($pqrs, $tenant, $by);
+        }
+    }
+
+    /**
+     * Quita a un usuario desactivado de las PQRS abiertas que tenía a cargo,
+     * para que otra persona de la sede las tome. Las respondidas o cerradas
+     * conservan su responsable; si se reabren, quedan libres (ver changeStatus).
+     *
+     * @return int Cuántas solicitudes quedaron sin responsable
+     */
+    public function releaseInactiveAssignments(User $user, User $by): int
+    {
+        if ($user->is_active) {
+            return 0;
+        }
+
+        $lost = Pqrs::open()->where('assigned_to', $user->id)->get();
+
+        foreach ($lost as $pqrs) {
+            $this->unassign($pqrs, $by, "Se quitó la asignación a {$user->name}: su usuario fue desactivado.");
+        }
+
+        return $lost->count();
     }
 
     /**
@@ -337,6 +392,101 @@ class PqrsService
             'is_public' => false,
             'meta' => ['from' => $previous, 'to' => null],
         ]);
+    }
+
+    /**
+     * Relee la PQRS bloqueando su fila hasta que termine la transacción: si
+     * dos personas actúan a la vez sobre la misma solicitud, van en fila.
+     */
+    protected function lockAndRefresh(Pqrs $pqrs): void
+    {
+        Pqrs::query()->whereKey($pqrs->getKey())->lockForUpdate()->first();
+        $pqrs->refresh();
+    }
+
+    /**
+     * Si la PQRS tiene responsable, solo él o un administrador actúan sobre ella.
+     */
+    protected function ensureInCharge(Pqrs $pqrs, User $user, string $field, string $action): void
+    {
+        if ($user->isAdmin() || $pqrs->assigned_to === null || $pqrs->assigned_to === $user->id) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            $field => 'Esta solicitud está a cargo de '.($pqrs->assignee->name ?? 'otra persona').". Solo esa persona o un administrador pueden {$action}.",
+        ]);
+    }
+
+    /**
+     * Reglas para responder al ciudadano. Con $take, quien responde queda
+     * como responsable (en la misma transacción que la respuesta).
+     */
+    protected function ensureCanRespond(Pqrs $pqrs, User $user, bool $take): void
+    {
+        if ($pqrs->status === PqrsStatus::Cerrada) {
+            throw ValidationException::withMessages([
+                'body' => 'La solicitud está cerrada. Reábrela (con un motivo) antes de enviar una nueva respuesta.',
+            ]);
+        }
+
+        if ($pqrs->assigned_to === $user->id) {
+            return;
+        }
+
+        $this->ensureInCharge($pqrs, $user, 'body', 'responderla');
+
+        if (! $take) {
+            throw ValidationException::withMessages([
+                'body' => 'Para responder debes ser el responsable de esta solicitud.',
+            ]);
+        }
+
+        $this->recordAssignment($pqrs, $user, $user);
+    }
+
+    /**
+     * Cambia el responsable y lo deja en el historial interno (sin validar).
+     */
+    protected function recordAssignment(Pqrs $pqrs, ?User $assignee, User $by): void
+    {
+        $current = $pqrs->assignee;
+
+        $body = match (true) {
+            $assignee === null => 'Se quitó la asignación a '.($current->name ?? '—').'.',
+            $current === null => "Solicitud asignada a {$assignee->name}.",
+            default => "Solicitud reasignada de {$current->name} a {$assignee->name}.",
+        };
+
+        $pqrs->forceFill(['assigned_to' => $assignee?->id])->save();
+        $pqrs->setRelation('assignee', $assignee);
+
+        $pqrs->activities()->create([
+            'user_id' => $by->id,
+            'type' => PqrsActivity::TYPE_ASSIGNED,
+            'body' => $body,
+            'is_public' => false,
+            'meta' => ['from' => $current?->id, 'to' => $assignee?->id],
+        ]);
+    }
+
+    /**
+     * Si el responsable ya no puede atender la PQRS (desactivado o sin
+     * acceso a su sede), la deja sin responsable.
+     */
+    protected function releaseIfUnavailable(Pqrs $pqrs, User $by): void
+    {
+        $assignee = $pqrs->assignee;
+
+        if ($assignee === null) {
+            return;
+        }
+
+        if (! $assignee->is_active) {
+            $this->unassign($pqrs, $by, "Se quitó la asignación a {$assignee->name}: su usuario está desactivado.");
+        } elseif (! $assignee->canAccessSede($pqrs->sede_id)) {
+            $this->unassign($pqrs, $by, "Se quitó la asignación a {$assignee->name}: ya no tiene acceso a la sede de esta solicitud.");
+        }
     }
 
     /**
@@ -456,9 +606,11 @@ class PqrsService
 
             $pqrs->attachments()->create([
                 'activity_id' => $activity->id,
-                'original_name' => $file->getClientOriginalName(),
+                // El nombre lo manda el navegador: se recorta al tamaño de la columna.
+                'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
                 'path' => $path,
-                'mime_type' => $file->getClientMimeType(),
+                // El tipo se detecta en el servidor (el del navegador se puede falsear).
+                'mime_type' => mb_substr((string) $file->getMimeType(), 0, 120),
                 'size' => $file->getSize(),
             ]);
         }

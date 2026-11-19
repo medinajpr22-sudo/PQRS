@@ -84,11 +84,16 @@ class TenantProvisioner
         } catch (Throwable $e) {
             // Si algo falla, no dejamos una empresa a medio crear (la base, si
             // alcanzó a crearse, es nueva: se comprobó arriba que no existía).
+            // Si falló una migración, la empresa nueva puede haber quedado
+            // activa y conectada a su base: se cierra antes de borrarla.
+            tenancy()->end();
+
             if ($tenant->exists) {
                 try {
                     $tenant->delete();
-                } catch (Throwable) {
-                    // Se conserva el error original.
+                } catch (Throwable $cleanup) {
+                    // Se conserva el error original, pero se registra este.
+                    report($cleanup);
                 }
             }
 

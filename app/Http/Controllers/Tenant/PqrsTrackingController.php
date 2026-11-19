@@ -9,6 +9,7 @@ use App\Models\PqrsAttachment;
 use App\Models\Tenant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -21,12 +22,15 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PqrsTrackingController extends Controller
 {
+    /** Intentos fallidos por correo o por radicado, cada hora. */
+    private const MAX_FAILED_ATTEMPTS = 8;
+
     public function create(Request $request): Response
     {
         // La barra «Hacer seguimiento» del inicio trae el radicado ya escrito;
         // el correo se pide aquí para que nadie consulte solicitudes ajenas.
         return Inertia::render('tenant/portal/track', [
-            'radicado' => Str::upper(trim((string) $request->query('radicado'))) ?: null,
+            'radicado' => is_string($radicado = $request->query('radicado')) ? (Str::upper(trim($radicado)) ?: null) : null,
         ]);
     }
 
@@ -37,11 +41,34 @@ class PqrsTrackingController extends Controller
             'email' => ['required', 'email', 'max:150'],
         ], [], ['radicado' => 'número de radicado', 'email' => 'correo electrónico']);
 
-        $pqrs = Pqrs::where('radicado', Str::upper(trim($data['radicado'])))
-            ->where('requester_email', Str::lower(trim($data['email'])))
+        $radicado = Str::upper(trim($data['radicado']));
+        $email = Str::lower(trim($data['email']));
+
+        // Los radicados son consecutivos: además del tope por conexión, se
+        // limitan los intentos fallidos por correo y por radicado, para que
+        // nadie pruebe números con el correo de otra persona (o al revés).
+        $keys = [
+            'tracking-email|'.tenant('id').'|'.$email,
+            'tracking-radicado|'.tenant('id').'|'.$radicado,
+        ];
+
+        foreach ($keys as $key) {
+            if (RateLimiter::tooManyAttempts($key, self::MAX_FAILED_ATTEMPTS)) {
+                throw ValidationException::withMessages([
+                    'radicado' => 'Demasiados intentos. Vuelve a intentarlo en '.ceil(RateLimiter::availableIn($key) / 60).' minutos.',
+                ]);
+            }
+        }
+
+        $pqrs = Pqrs::where('radicado', $radicado)
+            ->where('requester_email', $email)
             ->first();
 
         if (! $pqrs) {
+            foreach ($keys as $key) {
+                RateLimiter::hit($key, 3600);
+            }
+
             throw ValidationException::withMessages([
                 'radicado' => 'No encontramos una solicitud con ese número de radicado y correo.',
             ]);
@@ -92,9 +119,12 @@ class PqrsTrackingController extends Controller
         ]);
     }
 
-    public function attachment(Request $request, Pqrs $pqrs, PqrsAttachment $attachment): StreamedResponse
+    public function attachment(Request $request, Pqrs $pqrs, PqrsAttachment $attachment): StreamedResponse|RedirectResponse
     {
-        abort_unless($request->session()->get("tracking.{$pqrs->radicado}"), 403);
+        // Igual que si el radicado no existiera (ver ->missing() en las rutas).
+        if (! $request->session()->get("tracking.{$pqrs->radicado}")) {
+            return to_route('tenant.tracking.create');
+        }
 
         // Los adjuntos de notas internas no se exponen al ciudadano, aunque adivine el número.
         abort_unless($attachment->isPublic(), 404);

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -14,8 +15,12 @@ use Tests\TestCase;
 |
 */
 
+// Normalmente se prueba en SQLite en memoria (phpunit.xml). Para probar en
+// PostgreSQL: DB_CONNECTION=pgsql DB_DATABASE=pqrs_testing php artisan test
+// Ahí cada empresa crea su base con CREATE DATABASE, que no puede ir dentro
+// de la transacción de RefreshDatabase: en su lugar se vacían las tablas.
 pest()->extend(TestCase::class)
-    ->use(RefreshDatabase::class)
+    ->use(getenv('DB_CONNECTION') === 'pgsql' ? DatabaseTruncation::class : RefreshDatabase::class)
     ->in('Feature');
 
 /*

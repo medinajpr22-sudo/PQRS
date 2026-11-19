@@ -132,6 +132,13 @@ class UserController extends Controller
         $by = $request->user();
 
         $released = DB::transaction(function () use ($user, $data, $role, $isActive, $deactivated, $passwordChanged, $stopsBeingActiveAdmin, $currentSessionId, $service, $by) {
+            // Bloquea a los administradores mientras dure el cambio: si dos se
+            // quitan el rol al mismo tiempo, el segundo espera al primero y la
+            // revisión de abajo ve el resultado real.
+            if ($stopsBeingActiveAdmin) {
+                User::where('role', UserRole::Admin)->lockForUpdate()->get(['id']);
+            }
+
             $user->fill([
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -156,9 +163,8 @@ class UserController extends Controller
 
             $user->save();
 
-            // Se vuelve a contar después de escribir: si dos administradores se
-            // quitan el rol al mismo tiempo, el segundo ve el cambio del primero
-            // y su transacción se revierte.
+            // Se vuelve a contar después de escribir (con los administradores
+            // bloqueados arriba): la empresa nunca queda sin administrador.
             if ($stopsBeingActiveAdmin && ! User::where('role', UserRole::Admin)->where('is_active', true)->exists()) {
                 throw ValidationException::withMessages([
                     'role' => 'La empresa debe tener al menos un administrador activo.',
@@ -167,15 +173,16 @@ class UserController extends Controller
 
             $user->sedes()->sync(self::sedesFor($role, $data));
 
-            // Si perdió acceso a una sede, sus PQRS abiertas de esa sede quedan
-            // sin responsable para que alguien que sí la atienda las tome.
-            return $service->releaseInaccessibleAssignments($user, $by);
+            // Si lo desactivaron o perdió acceso a una sede, sus PQRS abiertas
+            // quedan sin responsable para que alguien de la sede las tome.
+            return $service->releaseInactiveAssignments($user, $by)
+                + $service->releaseInaccessibleAssignments($user, $by);
         });
 
         $message = "Usuario {$user->name} actualizado.";
 
         if ($released > 0) {
-            $message .= " {$released} ".($released === 1 ? 'solicitud quedó' : 'solicitudes quedaron').' sin responsable porque ya no tiene acceso a su sede.';
+            $message .= " {$released} ".($released === 1 ? 'solicitud abierta quedó' : 'solicitudes abiertas quedaron').' sin responsable para que otra persona de la sede las tome.';
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $message]);

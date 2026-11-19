@@ -20,11 +20,17 @@
             }
         </style>
 
-        @if ($tenantTheme && $tenantTheme['logo_url'])
-        <link rel="icon" href="{{ $tenantTheme['logo_url'] }}">
+        @php
+            // Ícono de la pestaña: el de la empresa; si no subió uno, su logo;
+            // si tampoco tiene logo, el de la plataforma.
+            $tenantIcon = $tenantTheme ? ($tenantTheme['icon_url'] ?? $tenantTheme['logo_url']) : null;
+        @endphp
+        @if ($tenantIcon)
+        <link rel="icon" href="{{ $tenantIcon }}">
+        <link rel="apple-touch-icon" href="{{ $tenantIcon }}">
         @else
         <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.png" type="image/png" sizes="192x192">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         @endif
 

@@ -14,6 +14,20 @@ return [
     */
     'colombian_holidays' => env('PQRS_COLOMBIAN_HOLIDAYS', true),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Super administrador inicial (php artisan db:seed)
+    |--------------------------------------------------------------------------
+    |
+    | En producción la contraseña es obligatoria: el seeder no crea un
+    | usuario con una contraseña conocida.
+    |
+    */
+    'super_admin' => [
+        'email' => env('PQRS_SUPER_ADMIN_EMAIL', 'admin@pqrs.test'),
+        'password' => env('PQRS_SUPER_ADMIN_PASSWORD'),
+    ],
+
     'holidays' => [
         // '2026-12-24',
     ],

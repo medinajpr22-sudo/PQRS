@@ -34,6 +34,9 @@ class UpdateTenantThemeRequest extends FormRequest
             'website_url' => ['nullable', 'url', 'max:190'],
             'logo' => ['nullable', 'file', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
             'remove_logo' => ['nullable', 'boolean'],
+            // Sin SVG: se sirve desde nuestro dominio y podría traer scripts.
+            'icon' => ['nullable', 'file', 'mimes:png,jpg,jpeg,webp,ico', 'max:1024'],
+            'remove_icon' => ['nullable', 'boolean'],
         ];
     }
 
@@ -53,6 +56,7 @@ class UpdateTenantThemeRequest extends FormRequest
             'hero_subtitle' => 'subtítulo',
             'footer_text' => 'texto del pie de página',
             'website_url' => 'sitio web',
+            'icon' => 'ícono',
         ];
     }
 }

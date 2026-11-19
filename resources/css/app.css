@@ -272,3 +272,90 @@
     background-color: color-mix(in oklab, var(--panel-fg) 12%, transparent);
     color: var(--panel-fg);
 }
+
+/* ------------------------------------------------------------------ */
+/* Animaciones del portal público                                      */
+/*                                                                     */
+/* Suaves y cortas. Si la persona pidió «reducir movimiento» en su     */
+/* equipo o celular, no se anima nada y todo se ve desde el inicio.    */
+/* ------------------------------------------------------------------ */
+@keyframes portal-rise {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+}
+
+@keyframes portal-drop {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+}
+
+@keyframes portal-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.4);
+    }
+}
+
+@keyframes portal-drift {
+    to {
+        transform: translate3d(-3%, 4%, 0) scale(1.08);
+    }
+}
+
+@keyframes portal-check {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+@media screen and (prefers-reduced-motion: no-preference) {
+    /* Entrada al cargar la página (títulos del encabezado). */
+    .portal-enter {
+        animation: portal-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation-delay: var(--enter-delay, 0ms);
+    }
+
+    /* Aparece al llegar con el scroll (ver components/portal/reveal.tsx). */
+    .portal-reveal {
+        transition:
+            opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+            transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+        transition-delay: var(--reveal-delay, 0ms);
+    }
+
+    .portal-reveal[data-shown='false'] {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    /* El número de cada paso del formulario «salta» al aparecer. */
+    .portal-reveal[data-shown='true'] .portal-step-badge {
+        animation: portal-pop 0.5s 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    /* Bloques que se despliegan (p. ej. «Otra persona»). */
+    .portal-expand {
+        animation: portal-drop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    /* Ícono que aparece con rebote (comprobante de radicación). */
+    .portal-pop {
+        animation: portal-pop 0.6s 0.1s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    /* Chulo que se dibuja solo. */
+    .portal-check path {
+        stroke-dasharray: 12;
+        stroke-dashoffset: 12;
+        animation: portal-check 0.5s 0.45s ease-out forwards;
+    }
+
+    /* Luces del fondo del encabezado que se mueven muy despacio. */
+    .portal-drift {
+        animation: portal-drift 18s ease-in-out infinite alternate;
+    }
+}

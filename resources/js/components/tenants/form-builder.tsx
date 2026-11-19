@@ -1,4 +1,5 @@
 import { useForm } from '@inertiajs/react';
+import { useState } from 'react';
 import {
     ArrowDown,
     ArrowUp,
@@ -79,6 +80,13 @@ export function FormBuilder({
     const form = useForm<FormSchema>(schema);
     const { data, setData, errors } = form;
     const err = errors as Record<string, string | undefined>;
+    // Servicios, uno por línea (se guardan como lista).
+    const [servicesText, setServicesText] = useState(
+        schema.services.join('\n'),
+    );
+    const servicesError = Object.entries(err).find(([k]) =>
+        k.startsWith('services'),
+    )?.[1];
 
     const updateField = (index: number, patch: Partial<FormField>) =>
         setData(
@@ -312,6 +320,55 @@ export function FormBuilder({
                             className="w-20"
                         />
                         <InputError message={err.max_attachments} />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Atención en salud</CardTitle>
+                    <CardDescription>
+                        Para IPS y EPS: quién recibió el servicio (paciente
+                        afectado y parentesco), EPS, régimen y fecha de
+                        atención. También muestra el aviso de la
+                        Superintendencia Nacional de Salud.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                    <Toggle
+                        id="health_data"
+                        label="Pedir los datos del paciente y de la atención"
+                        checked={data.health_data}
+                        onChange={(v) => setData('health_data', v)}
+                    />
+                    <div className="grid gap-2">
+                        <Label htmlFor="services">
+                            Servicios que presta la empresa
+                        </Label>
+                        <Textarea
+                            id="services"
+                            rows={5}
+                            value={servicesText}
+                            placeholder={
+                                'Hemodiálisis\nDiálisis peritoneal\nConsulta externa'
+                            }
+                            onChange={(e) => {
+                                setServicesText(e.target.value);
+                                setData(
+                                    'services',
+                                    e.target.value
+                                        .split('\n')
+                                        .map((line) => line.trim())
+                                        .filter(Boolean),
+                                );
+                            }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Uno por línea. El ciudadano elige el que recibió en
+                            «Servicio recibido». Déjalo vacío para no
+                            preguntarlo.
+                        </p>
+                        <InputError message={servicesError} />
                     </div>
                 </CardContent>
             </Card>

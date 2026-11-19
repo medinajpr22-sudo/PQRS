@@ -50,7 +50,8 @@ class StoreTenantRequest extends FormRequest
             'radicado_prefix' => ['nullable', 'string', 'max:6', 'regex:/^[A-Z0-9]+$/'],
             // Nombre de la base de datos propia de la empresa (no se puede cambiar después).
             'database' => [
-                'required', 'string', 'min:3', 'max:64',
+                // bail: si el nombre no es válido, no se consulta la base.
+                'bail', 'required', 'string', 'min:3', 'max:64',
                 'regex:/^[a-z][a-z0-9_]*$/',
                 Rule::notIn(Tenant::RESERVED_DATABASE_NAMES),
                 function (string $attribute, mixed $value, \Closure $fail) {

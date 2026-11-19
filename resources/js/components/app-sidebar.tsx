@@ -1,7 +1,11 @@
 import { Link } from '@inertiajs/react';
 import { Building2, LayoutGrid, PlusCircle } from 'lucide-react';
 import { NavMain } from '@/components/nav-main';
-import { PanelBrand } from '@/components/panel/panel-brand';
+import {
+    PanelBrand,
+    PanelIcon,
+    PLATFORM_ICON,
+} from '@/components/panel/panel-brand';
 import { PanelSidebarUser } from '@/components/panel/panel-user';
 import {
     Sidebar,
@@ -42,11 +46,13 @@ export function AppSidebar() {
                     <PanelBrand
                         name="Portal PQRS"
                         tag="Administración"
+                        iconUrl={PLATFORM_ICON}
                         className="group-data-[collapsible=icon]:hidden"
                     />
-                    <span className="hidden size-8 items-center justify-center rounded-lg bg-black/25 text-sm font-bold text-(--panel-fg) group-data-[collapsible=icon]:flex">
-                        P
-                    </span>
+                    <PanelIcon
+                        src={PLATFORM_ICON}
+                        className="hidden size-8 rounded-lg p-1 group-data-[collapsible=icon]:flex"
+                    />
                 </Link>
             </SidebarHeader>
 

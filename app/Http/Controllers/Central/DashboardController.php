@@ -19,8 +19,16 @@ class DashboardController extends Controller
         $tenants = Tenant::with('domains')->orderBy('name')->get();
         $months = collect(range(5, 0))->map(fn (int $i) => now()->startOfMonth()->subMonths($i));
 
-        $rows = $tenants->map(function (Tenant $tenant) use ($months) {
-            $data = $tenant->run(fn () => [
+        $empty = [
+            'stats' => ['total' => 0, 'open' => 0, 'overdue' => 0, 'this_month' => 0],
+            'by_type' => [],
+            'monthly' => $months->map(fn () => 0)->all(),
+        ];
+
+        $rows = $tenants->map(function (Tenant $tenant) use ($months, $empty) {
+            // Si la base de una empresa no responde, el resumen se muestra igual
+            // (con ceros para esa empresa) y el error queda en el registro.
+            $data = rescue(fn () => $tenant->run(fn () => [
                 'stats' => [
                     'total' => Pqrs::count(),
                     'open' => Pqrs::open()->count(),
@@ -29,7 +37,7 @@ class DashboardController extends Controller
                 ],
                 'by_type' => Pqrs::selectRaw('type, count(*) as total')->groupBy('type')->pluck('total', 'type')->all(),
                 'monthly' => $months->map(fn (CarbonInterface $m) => Pqrs::whereBetween('created_at', [$m, $m->endOfMonth()])->count())->all(),
-            ]);
+            ]), $empty);
 
             return [
                 'id' => $tenant->id,

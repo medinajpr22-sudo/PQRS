@@ -7,7 +7,9 @@ import {
     Search,
     ShieldCheck,
 } from 'lucide-react';
+import { Reveal } from '@/components/portal/reveal';
 import { SaludHome } from '@/components/portal/salud-home';
+import { cn } from '@/lib/utils';
 import type { PqrsTypeConfig, RiskLevelOption } from '@/types';
 
 type Props = {
@@ -40,79 +42,97 @@ export default function PortalHome({
 
             <div className="space-y-10">
                 <div className="grid gap-4 md:grid-cols-2">
-                    <ActionCard
-                        href="/radicar"
-                        icon={FilePlus2}
-                        title="Radicar una solicitud"
-                        description="Presenta una petición, queja, reclamo o sugerencia. Recibirás un número de radicado al instante."
-                        cta="Radicar PQRS"
-                        primary
-                    />
-                    <ActionCard
-                        href="/consultar"
-                        icon={Search}
-                        title="Consultar el estado"
-                        description="Revisa el avance y la respuesta de tu solicitud con tu número de radicado y correo."
-                        cta="Consultar"
-                    />
+                    <Reveal className="h-full">
+                        <ActionCard
+                            href="/radicar"
+                            icon={FilePlus2}
+                            title="Radicar una solicitud"
+                            description="Presenta una petición, queja, reclamo o sugerencia. Recibirás un número de radicado al instante."
+                            cta="Radicar PQRS"
+                            primary
+                        />
+                    </Reveal>
+                    <Reveal delay={1} className="h-full">
+                        <ActionCard
+                            href="/consultar"
+                            icon={Search}
+                            title="Consultar el estado"
+                            description="Revisa el avance y la respuesta de tu solicitud con tu número de radicado y correo."
+                            cta="Consultar"
+                        />
+                    </Reveal>
                 </div>
 
                 <section>
-                    <h2 className="text-xl font-semibold tracking-tight">
-                        ¿Qué puedes radicar?
-                    </h2>
-                    <p className="mt-1 text-sm text-zinc-500">
-                        Elige el tipo de solicitud que mejor describa tu caso.
-                    </p>
+                    <Reveal>
+                        <h2 className="text-xl font-semibold tracking-tight">
+                            ¿Qué puedes radicar?
+                        </h2>
+                        <p className="mt-1 text-sm text-zinc-500">
+                            Elige el tipo de solicitud que mejor describa tu
+                            caso.
+                        </p>
+                    </Reveal>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {types.map((type) => (
-                            <Link
+                        {types.map((type, i) => (
+                            <Reveal
                                 key={type.key}
-                                href={`/radicar?tipo=${type.key}`}
-                                className="group flex flex-col rounded-xl border border-zinc-200 bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-(--brand) hover:shadow-md"
+                                delay={i % 3}
+                                className="h-full"
                             >
-                                <div className="flex items-center justify-between">
-                                    <h3 className="font-semibold">
-                                        {type.label}
-                                    </h3>
-                                    <ArrowRight className="size-4 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-(--brand)" />
-                                </div>
-                                <p className="mt-1.5 flex-1 text-sm text-zinc-500">
-                                    {type.description}
-                                </p>
-                                <p className="mt-4 text-xs font-medium text-zinc-600">
-                                    Respuesta en máximo{' '}
-                                    <span className="text-(--brand)">
-                                        {type.sla_days} días hábiles
-                                    </span>
-                                </p>
-                            </Link>
+                                <Link
+                                    href={`/radicar?tipo=${type.key}`}
+                                    className="group flex h-full flex-col rounded-xl border border-zinc-200 bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-(--brand) hover:shadow-md"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-semibold">
+                                            {type.label}
+                                        </h3>
+                                        <ArrowRight className="size-4 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-(--brand)" />
+                                    </div>
+                                    <p className="mt-1.5 flex-1 text-sm text-zinc-500">
+                                        {type.description}
+                                    </p>
+                                    <p className="mt-4 text-xs font-medium text-zinc-600">
+                                        Respuesta en máximo{' '}
+                                        <span className="text-(--brand)">
+                                            {type.sla_days} días hábiles
+                                        </span>
+                                    </p>
+                                </Link>
+                            </Reveal>
                         ))}
                     </div>
                 </section>
 
-                <section className="rounded-2xl bg-(--brand-soft) p-6 sm:p-8">
+                <Reveal
+                    as="section"
+                    className="rounded-2xl bg-(--brand-soft) p-6 sm:p-8"
+                >
                     <h2 className="text-lg font-semibold tracking-tight">
                         ¿Cómo funciona?
                     </h2>
                     <ol className="mt-5 grid gap-6 sm:grid-cols-3">
                         <Step
+                            delay={1}
                             icon={FilePlus2}
                             title="1. Radica"
                             text="Diligencia el formulario con los datos de tu solicitud y adjunta soportes si los tienes."
                         />
                         <Step
+                            delay={2}
                             icon={Hash}
                             title="2. Guarda tu radicado"
                             text="Te mostramos y enviamos por correo un número único para hacer seguimiento."
                         />
                         <Step
+                            delay={3}
                             icon={BellRing}
                             title="3. Recibe respuesta"
                             text="Te notificaremos por correo electrónico cuando tu solicitud sea respondida."
                         />
                     </ol>
-                </section>
+                </Reveal>
 
                 <p className="flex items-start gap-2 text-xs text-zinc-500">
                     <ShieldCheck className="mt-0.5 size-4 shrink-0" />
@@ -159,14 +179,15 @@ function ActionCard({
     return (
         <Link
             href={href}
-            className="group flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-lg sm:p-7"
+            className="group flex h-full flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg sm:p-7"
         >
             <span
-                className={
+                className={cn(
+                    'flex size-12 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6',
                     primary
-                        ? 'flex size-12 items-center justify-center rounded-xl bg-(--brand) text-(--brand-fg)'
-                        : 'flex size-12 items-center justify-center rounded-xl bg-(--brand-soft) text-(--brand)'
-                }
+                        ? 'bg-(--brand) text-(--brand-fg)'
+                        : 'bg-(--brand-soft) text-(--brand)',
+                )}
             >
                 <Icon className="size-6" />
             </span>
@@ -194,13 +215,15 @@ function Step({
     icon: Icon,
     title,
     text,
+    delay,
 }: {
     icon: typeof Search;
     title: string;
     text: string;
+    delay: number;
 }) {
     return (
-        <li className="flex gap-3">
+        <Reveal as="li" delay={delay} className="flex gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-(--brand) shadow-sm">
                 <Icon className="size-5" />
             </span>
@@ -208,7 +231,7 @@ function Step({
                 <p className="font-semibold">{title}</p>
                 <p className="mt-1 text-sm text-zinc-600">{text}</p>
             </div>
-        </li>
+        </Reveal>
     );
 }
 

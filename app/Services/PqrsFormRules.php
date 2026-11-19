@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\PqrsType;
 use App\Enums\RiskLevel;
+use App\Rules\DocumentNumber;
 use Illuminate\Validation\Rule;
 
 /**
@@ -22,6 +23,66 @@ class PqrsFormRules
     ];
 
     /**
+     * Documentos del paciente afectado: puede ser un menor (registro civil),
+     * pero no una empresa (NIT).
+     */
+    public const PATIENT_DOCUMENT_TYPES = [
+        'CC' => 'Cédula de ciudadanía',
+        'TI' => 'Tarjeta de identidad',
+        'RC' => 'Registro civil',
+        'CE' => 'Cédula de extranjería',
+        'PA' => 'Pasaporte',
+        'PPT' => 'Permiso por protección temporal',
+    ];
+
+    /**
+     * Régimen de afiliación al sistema de salud.
+     */
+    public const HEALTH_REGIMES = [
+        'contributivo' => 'Contributivo',
+        'subsidiado' => 'Subsidiado',
+        'especial' => 'Especial o de excepción',
+        'particular' => 'Particular (sin EPS)',
+    ];
+
+    /**
+     * Nombre de un tipo de documento (del solicitante o del paciente).
+     */
+    public static function documentLabel(?string $type): ?string
+    {
+        return $type === null ? null : (self::DOCUMENT_TYPES[$type] ?? self::PATIENT_DOCUMENT_TYPES[$type] ?? $type);
+    }
+
+    /**
+     * Limpia los datos antes de validarlos: el ciudadano suele escribir la
+     * cédula con puntos o espacios (1.075.234.567), y los campos de una línea
+     * no deben traer saltos de línea.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<string, string>
+     */
+    public static function normalize(array $input): array
+    {
+        $clean = [];
+
+        foreach (['requester_document', 'affected_document'] as $key) {
+            if (is_string($input[$key] ?? null)) {
+                $clean[$key] = mb_strtoupper((string) preg_replace('/[\s.,]+/u', '', $input[$key]));
+            }
+        }
+
+        // Campos de una sola línea: sin saltos de línea ni espacios de más
+        // (se usan en los correos y en los listados).
+        foreach (['requester_name', 'affected_name', 'requester_relationship', 'eps', 'subject'] as $key) {
+            if (is_string($input[$key] ?? null)) {
+                $clean[$key] = trim((string) preg_replace('/\s+/u', ' ', $input[$key]));
+            }
+        }
+
+        return $clean;
+    }
+
+    /**
      * @param  array<string, mixed>  $schema
      * @param  list<int>  $sedeIds  Sedes activas de la empresa. Si tiene alguna,
      *                              el ciudadano debe elegir una.
@@ -37,7 +98,7 @@ class PqrsFormRules
             'requester_email' => ['required', 'email', 'max:150'],
             'requester_phone' => [$schema['require_phone'] ? 'required' : 'nullable', 'string', 'max:30'],
             'requester_document_type' => [$schema['require_document'] ? 'required' : 'nullable', Rule::in(array_keys(self::DOCUMENT_TYPES))],
-            'requester_document' => [$schema['require_document'] ? 'required' : 'nullable', 'string', 'max:30'],
+            'requester_document' => [$schema['require_document'] ? 'required' : 'nullable', 'string', 'max:30', new DocumentNumber('requester_document_type')],
             'subject' => ['required', 'string', 'max:200'],
             'description' => ['required', 'string', 'min:20', 'max:5000'],
             'privacy' => ['accepted'],
@@ -50,6 +111,29 @@ class PqrsFormRules
         // Reclamos en salud: nivel de riesgo obligatorio si la empresa lo usa.
         if (! empty($schema['risk_levels'])) {
             $rules['risk_level'] = ['nullable', 'required_if:type,'.PqrsType::Reclamo->value, Rule::enum(RiskLevel::class)];
+        }
+
+        // Empresas de salud: quién recibió el servicio, EPS, régimen y fecha.
+        // Si el solicitante es el mismo afectado, sus datos no se repiten.
+        if (! empty($schema['health_data'])) {
+            $other = 'exclude_if:requester_is_affected,1';
+
+            $rules += [
+                'requester_is_affected' => ['required', 'boolean'],
+                'requester_relationship' => [$other, 'nullable', 'string', 'max:60'],
+                'affected_name' => [$other, 'required', 'string', 'max:150'],
+                'affected_document_type' => [$other, 'required', Rule::in(array_keys(self::PATIENT_DOCUMENT_TYPES))],
+                'affected_document' => [$other, 'required', 'string', 'max:30', new DocumentNumber('affected_document_type')],
+                'affected_phone' => [$other, 'nullable', 'string', 'max:30'],
+                'affected_email' => [$other, 'nullable', 'email', 'max:150'],
+                'eps' => ['nullable', 'string', 'max:120'],
+                'health_regime' => ['nullable', Rule::in(array_keys(self::HEALTH_REGIMES))],
+                'attended_on' => ['nullable', 'date', 'after:2000-01-01', 'before_or_equal:today'],
+            ];
+        }
+
+        if (! empty($schema['services'])) {
+            $rules['service'] = ['nullable', Rule::in($schema['services'])];
         }
 
         foreach ($schema['fields'] as $field) {
@@ -85,6 +169,17 @@ class PqrsFormRules
             'requester_phone' => 'teléfono',
             'requester_document_type' => 'tipo de documento',
             'requester_document' => 'número de documento',
+            'requester_is_affected' => 'quién recibió el servicio',
+            'requester_relationship' => 'parentesco',
+            'affected_name' => 'nombre del afectado',
+            'affected_document_type' => 'tipo de documento del afectado',
+            'affected_document' => 'número de documento del afectado',
+            'affected_phone' => 'teléfono del afectado',
+            'affected_email' => 'correo del afectado',
+            'eps' => 'EPS',
+            'health_regime' => 'régimen',
+            'service' => 'servicio recibido',
+            'attended_on' => 'fecha de atención',
             'subject' => 'asunto',
             'description' => 'descripción',
             'privacy' => 'autorización de tratamiento de datos',

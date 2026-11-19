@@ -1,5 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
-import { FileText, Paperclip, Send, X } from 'lucide-react';
+import { FileText, Info, Paperclip, Send, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import PqrsSubmissionController from '@/actions/App/Http/Controllers/Tenant/PqrsSubmissionController';
 import InputError from '@/components/input-error';
@@ -19,6 +19,8 @@ import type { FormSchema, Option, RiskLevelOption } from '@/types';
 type Props = {
     schema: FormSchema;
     documentTypes: Option[];
+    patientDocumentTypes: Option[];
+    healthRegimes: Option[];
     attachmentRules: { max_kb: number; mimes: string[] };
     initialType: string | null;
     sedes: { value: number; label: string }[];
@@ -30,6 +32,8 @@ type Props = {
 export default function CreatePqrs({
     schema,
     documentTypes,
+    patientDocumentTypes,
+    healthRegimes,
     attachmentRules,
     initialType,
     sedes,
@@ -44,6 +48,9 @@ export default function CreatePqrs({
         (schema.types.length === 1 ? schema.types[0].key : undefined);
     const [selectedType, setSelectedType] = useState(defaultType);
     const asksRisk = riskLevels.length > 0 && selectedType === 'reclamo';
+    // '1': el solicitante es el afectado; '0': lo radica por otra persona.
+    const [isAffected, setIsAffected] = useState<string | null>(null);
+    const today = new Date().toLocaleDateString('en-CA');
 
     const syncFiles = (next: File[]) => {
         setFiles(next);
@@ -62,7 +69,10 @@ export default function CreatePqrs({
         errors.attachments ??
         Object.entries(errors).find(([k]) => k.startsWith('attachments.'))?.[1];
 
-    const detailStep = schema.fields.length > 0 ? 4 : 3;
+    let step = 2;
+    const patientStep = schema.health_data ? ++step : undefined;
+    const fieldsStep = schema.fields.length > 0 ? ++step : undefined;
+    const detailStep = ++step;
 
     return (
         <>
@@ -77,7 +87,10 @@ export default function CreatePqrs({
                 {({ processing, errors }) => (
                     <>
                         {Object.keys(errors).length > 0 && (
-                            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                            <div
+                                key={Object.keys(errors).join()}
+                                className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 motion-safe:animate-in motion-safe:duration-300 motion-safe:fade-in motion-safe:slide-in-from-top-2"
+                            >
                                 <p className="font-semibold">
                                     Revisa la información del formulario
                                 </p>
@@ -100,7 +113,7 @@ export default function CreatePqrs({
                                 {schema.types.map((type) => (
                                     <label
                                         key={type.key}
-                                        className="flex cursor-pointer gap-3 rounded-xl border border-zinc-200 p-4 transition-colors hover:bg-zinc-50 has-checked:border-(--brand) has-checked:bg-(--brand-soft) has-checked:ring-1 has-checked:ring-(--brand)"
+                                        className="flex cursor-pointer gap-3 rounded-xl border border-zinc-200 p-4 transition-all duration-200 hover:bg-zinc-50 active:scale-[0.99] has-checked:border-(--brand) has-checked:bg-(--brand-soft) has-checked:ring-1 has-checked:ring-(--brand)"
                                     >
                                         <input
                                             type="radio"
@@ -135,7 +148,7 @@ export default function CreatePqrs({
                                 className="mt-2"
                             />
                             {asksRisk && (
-                                <fieldset className="mt-6">
+                                <fieldset className="portal-expand mt-6">
                                     <legend className="font-bold">
                                         Nivel de riesgo del reclamo
                                     </legend>
@@ -148,7 +161,7 @@ export default function CreatePqrs({
                                         {riskLevels.map((level) => (
                                             <label
                                                 key={level.value}
-                                                className="flex cursor-pointer gap-3 rounded-xl border border-zinc-200 p-4 transition-colors hover:bg-zinc-50 has-checked:border-(--brand) has-checked:bg-(--brand-soft) has-checked:ring-1 has-checked:ring-(--brand)"
+                                                className="flex cursor-pointer gap-3 rounded-xl border border-zinc-200 p-4 transition-all duration-200 hover:bg-zinc-50 active:scale-[0.99] has-checked:border-(--brand) has-checked:bg-(--brand-soft) has-checked:ring-1 has-checked:ring-(--brand)"
                                             >
                                                 <input
                                                     type="radio"
@@ -325,9 +338,238 @@ export default function CreatePqrs({
                             </div>
                         </PortalCard>
 
+                        {schema.health_data && (
+                            <PortalCard
+                                step={patientStep}
+                                title="Paciente o afectado"
+                                description="Si presentas la solicitud por un familiar u otra persona que recibió el servicio, registra aquí sus datos."
+                            >
+                                <fieldset>
+                                    <legend className="text-sm font-medium">
+                                        ¿Quién recibió el servicio?
+                                        <Required />
+                                    </legend>
+                                    <div
+                                        role="radiogroup"
+                                        className="mt-3 grid gap-3 sm:grid-cols-2"
+                                    >
+                                        {[
+                                            {
+                                                value: '1',
+                                                title: 'Yo',
+                                                text: 'Soy el paciente o la persona afectada.',
+                                            },
+                                            {
+                                                value: '0',
+                                                title: 'Otra persona',
+                                                text: 'Un familiar, un menor de edad o alguien a mi cargo.',
+                                            },
+                                        ].map((option) => (
+                                            <label
+                                                key={option.value}
+                                                className="flex cursor-pointer gap-3 rounded-xl border border-zinc-200 p-4 transition-all duration-200 hover:bg-zinc-50 active:scale-[0.99] has-checked:border-(--brand) has-checked:bg-(--brand-soft) has-checked:ring-1 has-checked:ring-(--brand)"
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="requester_is_affected"
+                                                    value={option.value}
+                                                    onChange={() =>
+                                                        setIsAffected(
+                                                            option.value,
+                                                        )
+                                                    }
+                                                    required
+                                                    className="mt-1 accent-(--brand)"
+                                                />
+                                                <span>
+                                                    <span className="block font-medium">
+                                                        {option.title}
+                                                    </span>
+                                                    <span className="block text-xs text-zinc-500">
+                                                        {option.text}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <InputError
+                                        message={errors.requester_is_affected}
+                                        className="mt-2"
+                                    />
+                                </fieldset>
+
+                                {isAffected === '0' && (
+                                    <div className="portal-expand mt-5 grid gap-5 sm:grid-cols-2">
+                                        <div className="grid gap-2 sm:col-span-2">
+                                            <Label htmlFor="affected_name">
+                                                Nombre completo del paciente
+                                                <Required />
+                                            </Label>
+                                            <Input
+                                                id="affected_name"
+                                                name="affected_name"
+                                                required
+                                                placeholder="Ej: Carlos Pérez"
+                                                aria-invalid={
+                                                    !!errors.affected_name
+                                                }
+                                            />
+                                            <InputError
+                                                message={errors.affected_name}
+                                            />
+                                        </div>
+                                        <div className="grid content-start gap-2">
+                                            <Label htmlFor="affected_document_type">
+                                                Tipo de documento
+                                                <Required />
+                                            </Label>
+                                            <NativeSelect
+                                                id="affected_document_type"
+                                                name="affected_document_type"
+                                                defaultValue="CC"
+                                                required
+                                            >
+                                                {patientDocumentTypes.map(
+                                                    (d) => (
+                                                        <option
+                                                            key={d.value}
+                                                            value={d.value}
+                                                        >
+                                                            {d.label}
+                                                        </option>
+                                                    ),
+                                                )}
+                                            </NativeSelect>
+                                            <InputError
+                                                message={
+                                                    errors.affected_document_type
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid content-start gap-2">
+                                            <Label htmlFor="affected_document">
+                                                Número de documento
+                                                <Required />
+                                            </Label>
+                                            <Input
+                                                id="affected_document"
+                                                name="affected_document"
+                                                inputMode="numeric"
+                                                required
+                                                aria-invalid={
+                                                    !!errors.affected_document
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.affected_document
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid content-start gap-2">
+                                            <Label htmlFor="affected_phone">
+                                                Teléfono del paciente
+                                            </Label>
+                                            <Input
+                                                id="affected_phone"
+                                                name="affected_phone"
+                                                type="tel"
+                                                aria-invalid={
+                                                    !!errors.affected_phone
+                                                }
+                                            />
+                                            <InputError
+                                                message={errors.affected_phone}
+                                            />
+                                        </div>
+                                        <div className="grid content-start gap-2">
+                                            <Label htmlFor="affected_email">
+                                                Correo del paciente
+                                            </Label>
+                                            <Input
+                                                id="affected_email"
+                                                name="affected_email"
+                                                type="email"
+                                                aria-invalid={
+                                                    !!errors.affected_email
+                                                }
+                                            />
+                                            <InputError
+                                                message={errors.affected_email}
+                                            />
+                                        </div>
+                                        <div className="grid content-start gap-2 sm:col-span-2">
+                                            <Label htmlFor="requester_relationship">
+                                                Tu parentesco con el paciente
+                                            </Label>
+                                            <Input
+                                                id="requester_relationship"
+                                                name="requester_relationship"
+                                                maxLength={60}
+                                                placeholder="Ej: Hijo(a), madre, tutor"
+                                                className="sm:max-w-sm"
+                                                aria-invalid={
+                                                    !!errors.requester_relationship
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    errors.requester_relationship
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mt-5 grid gap-5 border-t pt-5 sm:grid-cols-2">
+                                    <div className="grid content-start gap-2">
+                                        <Label htmlFor="eps">
+                                            EPS del paciente
+                                        </Label>
+                                        <Input
+                                            id="eps"
+                                            name="eps"
+                                            maxLength={120}
+                                            placeholder="Ej: Nueva EPS"
+                                            aria-invalid={!!errors.eps}
+                                        />
+                                        <InputError message={errors.eps} />
+                                    </div>
+                                    <div className="grid content-start gap-2">
+                                        <Label htmlFor="health_regime">
+                                            Régimen
+                                        </Label>
+                                        <NativeSelect
+                                            id="health_regime"
+                                            name="health_regime"
+                                            defaultValue=""
+                                            aria-invalid={
+                                                !!errors.health_regime
+                                            }
+                                        >
+                                            <option value="">
+                                                Selecciona el régimen
+                                            </option>
+                                            {healthRegimes.map((r) => (
+                                                <option
+                                                    key={r.value}
+                                                    value={r.value}
+                                                >
+                                                    {r.label}
+                                                </option>
+                                            ))}
+                                        </NativeSelect>
+                                        <InputError
+                                            message={errors.health_regime}
+                                        />
+                                    </div>
+                                </div>
+                            </PortalCard>
+                        )}
+
                         {schema.fields.length > 0 && (
                             <PortalCard
-                                step={3}
+                                step={fieldsStep}
                                 title="Información adicional"
                                 description="Estos datos nos ayudan a gestionar tu caso más rápido."
                             >
@@ -352,6 +594,62 @@ export default function CreatePqrs({
                             description="Describe de forma clara y completa los hechos."
                         >
                             <div className="grid gap-5">
+                                {(schema.services.length > 0 ||
+                                    schema.health_data) && (
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        {schema.services.length > 0 && (
+                                            <div className="grid content-start gap-2">
+                                                <Label htmlFor="service">
+                                                    Servicio recibido
+                                                </Label>
+                                                <NativeSelect
+                                                    id="service"
+                                                    name="service"
+                                                    defaultValue=""
+                                                    aria-invalid={
+                                                        !!errors.service
+                                                    }
+                                                >
+                                                    <option value="">
+                                                        Selecciona un servicio
+                                                    </option>
+                                                    {schema.services.map(
+                                                        (service) => (
+                                                            <option
+                                                                key={service}
+                                                                value={service}
+                                                            >
+                                                                {service}
+                                                            </option>
+                                                        ),
+                                                    )}
+                                                </NativeSelect>
+                                                <InputError
+                                                    message={errors.service}
+                                                />
+                                            </div>
+                                        )}
+                                        {schema.health_data && (
+                                            <div className="grid content-start gap-2">
+                                                <Label htmlFor="attended_on">
+                                                    Fecha de atención
+                                                </Label>
+                                                <Input
+                                                    id="attended_on"
+                                                    name="attended_on"
+                                                    type="date"
+                                                    max={today}
+                                                    aria-invalid={
+                                                        !!errors.attended_on
+                                                    }
+                                                />
+                                                <InputError
+                                                    message={errors.attended_on}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 <div className="grid gap-2">
                                     <Label htmlFor="subject">
                                         Asunto
@@ -421,9 +719,9 @@ export default function CreatePqrs({
                                         />
                                         <label
                                             htmlFor="attachments"
-                                            className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-zinc-300 px-4 py-6 text-center text-sm transition-colors hover:border-(--brand) hover:bg-(--brand-soft)"
+                                            className="group flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-zinc-300 px-4 py-6 text-center text-sm transition-colors hover:border-(--brand) hover:bg-(--brand-soft)"
                                         >
-                                            <Paperclip className="size-5 text-zinc-400" />
+                                            <Paperclip className="size-5 text-zinc-400 transition-transform duration-300 group-hover:-rotate-12 group-hover:text-(--brand)" />
                                             <span className="font-medium">
                                                 Haz clic para adjuntar archivos
                                             </span>
@@ -444,7 +742,7 @@ export default function CreatePqrs({
                                                 {files.map((file, i) => (
                                                     <li
                                                         key={`${file.name}-${i}`}
-                                                        className="flex items-center gap-3 px-3 py-2 text-sm"
+                                                        className="portal-expand flex items-center gap-3 px-3 py-2 text-sm"
                                                     >
                                                         <FileText className="size-4 text-zinc-400" />
                                                         <span className="flex-1 truncate">
@@ -520,6 +818,44 @@ export default function CreatePqrs({
                                 className="mt-2"
                             />
 
+                            {schema.health_data && (
+                                <p className="mt-5 flex gap-2 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
+                                    <Info className="mt-px size-4 shrink-0 text-zinc-400" />
+                                    <span>
+                                        Si no obtienes respuesta de esta
+                                        entidad, puedes presentar tu PQRD ante
+                                        la Superintendencia Nacional de Salud
+                                        por cualquiera de sus canales:{' '}
+                                        <a
+                                            href="https://www.supersalud.gov.co"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="font-medium text-(--brand) underline"
+                                        >
+                                            www.supersalud.gov.co
+                                        </a>
+                                        .
+                                    </span>
+                                </p>
+                            )}
+
+                            {/* Campo trampa: invisible para las personas; los robots lo llenan. */}
+                            <div
+                                aria-hidden="true"
+                                className="pointer-events-none absolute -left-[10000px] size-px overflow-hidden"
+                            >
+                                <label htmlFor="website">
+                                    No llenes este campo
+                                </label>
+                                <input
+                                    id="website"
+                                    name="website"
+                                    type="text"
+                                    tabIndex={-1}
+                                    autoComplete="off"
+                                />
+                            </div>
+
                             {captcha && (
                                 <div className="mt-5">
                                     <NotARobot error={errors.altcha} />
@@ -536,9 +872,13 @@ export default function CreatePqrs({
                                     type="submit"
                                     size="lg"
                                     disabled={processing}
-                                    className="w-full sm:w-auto"
+                                    className="group w-full sm:w-auto"
                                 >
-                                    {processing ? <Spinner /> : <Send />}
+                                    {processing ? (
+                                        <Spinner />
+                                    ) : (
+                                        <Send className="transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                                    )}
                                     Radicar solicitud
                                 </Button>
                             </div>

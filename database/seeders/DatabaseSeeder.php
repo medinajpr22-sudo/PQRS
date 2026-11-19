@@ -8,24 +8,35 @@ use Illuminate\Database\Seeder;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Datos iniciales de la base de datos central.
+     * Datos iniciales de la base de datos central: solo el super
+     * administrador. Las empresas se crean desde el panel central.
      *
-     * Credenciales de prueba (solo desarrollo):
-     *   Panel central:  admin@pqrs.test / Admin123*
-     *   Cada empresa:   admin@<id>.test  / Admin123*  (administrador de empresa, ve todas las sedes)
-     *                   agente@<id>.test / Admin123*  (agente, solo la primera sede; ver DemoTenantsSeeder)
+     * En desarrollo: admin@pqrs.test / Admin123*
+     * En producción la contraseña conocida no sirve: hay que definir
+     * PQRS_SUPER_ADMIN_EMAIL y PQRS_SUPER_ADMIN_PASSWORD en el .env.
      */
     public function run(): void
     {
+        $email = config('pqrs.super_admin.email');
+        $password = config('pqrs.super_admin.password');
+
+        if (blank($password)) {
+            if (app()->isProduction()) {
+                $this->command?->error('Define PQRS_SUPER_ADMIN_PASSWORD en el .env para crear el super administrador.');
+
+                return;
+            }
+
+            $password = 'Admin123*';
+        }
+
         User::firstOrCreate(
-            ['email' => 'admin@pqrs.test'],
+            ['email' => $email],
             [
                 'name' => 'Super Administrador',
-                'password' => 'Admin123*',
+                'password' => $password,
                 'email_verified_at' => now(),
             ],
         );
-
-        $this->call(DemoTenantsSeeder::class);
     }
 }

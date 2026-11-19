@@ -45,6 +45,9 @@ class UpdateTenantFormRequest extends FormRequest
             'allow_attachments' => ['required', 'boolean'],
             'max_attachments' => ['required', 'integer', 'min:1', 'max:10'],
             'risk_levels' => ['sometimes', 'boolean'],
+            'health_data' => ['sometimes', 'boolean'],
+            'services' => ['sometimes', 'array', 'max:40'],
+            'services.*' => ['required', 'string', 'max:120', 'distinct:ignore_case'],
             'privacy_policy_url' => ['nullable', 'url', 'max:190'],
             'privacy_text' => ['required', 'string', 'max:1000'],
         ];
@@ -81,6 +84,7 @@ class UpdateTenantFormRequest extends FormRequest
             'fields.*.label' => 'etiqueta del campo',
             'fields.*.options.*' => 'opción',
             'max_attachments' => 'máximo de adjuntos',
+            'services.*' => 'servicio',
             'privacy_policy_url' => 'URL de la política de datos',
             'privacy_text' => 'texto de autorización',
         ];
@@ -94,6 +98,7 @@ class UpdateTenantFormRequest extends FormRequest
         return [
             'fields.*.key.distinct' => 'Hay dos campos con el mismo identificador.',
             'fields.*.key.regex' => 'El identificador solo admite minúsculas, números y guion bajo.',
+            'services.*.distinct' => 'Hay un servicio repetido.',
         ];
     }
 
@@ -118,6 +123,8 @@ class UpdateTenantFormRequest extends FormRequest
                 ? array_values(array_unique($field['options'] ?? []))
                 : [],
         ])->values()->all();
+
+        $data['services'] = array_values(array_map('trim', $data['services'] ?? []));
 
         return TenantDefaults::mergeFormSchema($data);
     }

@@ -165,6 +165,7 @@ class Tenant extends BaseTenant implements TenantWithDatabase
     {
         $theme = array_merge(TenantDefaults::theme($this->name), $this->theme ?? []);
         $theme['logo_url'] = $theme['logo_path'] ? '/storage/'.$theme['logo_path'] : null;
+        $theme['icon_url'] = $theme['icon_path'] ? '/storage/'.$theme['icon_path'] : null;
 
         $font = TenantDefaults::FONTS[$theme['font']] ?? TenantDefaults::FONTS['circe-rounded'];
         $theme['font_family'] = $font['family'];

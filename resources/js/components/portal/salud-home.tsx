@@ -10,6 +10,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { enterDelay, Reveal } from '@/components/portal/reveal';
 import { cn } from '@/lib/utils';
 import type { PqrsTypeConfig, RiskLevelOption } from '@/types';
 
@@ -39,14 +40,17 @@ export function SaludHome({
             <TrackingBar />
 
             <section>
-                <h2 className="text-3xl font-bold md:text-4xl">
-                    Seleccione el tipo de solicitud
-                </h2>
-                <p className="mt-2 max-w-2xl text-zinc-600">
-                    Lea las definiciones y elija la que mejor describe su caso.
-                    {riskLevels.length > 0 &&
-                        ' Si tiene dudas entre un reclamo y otro, mida el riesgo.'}
-                </p>
+                <Reveal>
+                    <h2 className="text-3xl font-bold md:text-4xl">
+                        Seleccione el tipo de solicitud
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-zinc-600">
+                        Lea las definiciones y elija la que mejor describe su
+                        caso.
+                        {riskLevels.length > 0 &&
+                            ' Si tiene dudas entre un reclamo y otro, mida el riesgo.'}
+                    </p>
+                </Reveal>
 
                 <div className="mt-10 divide-y divide-zinc-200 border-y border-zinc-200">
                     {types.map((type) => (
@@ -82,7 +86,8 @@ function TrackingBar() {
     return (
         <form
             onSubmit={submit}
-            className="relative -mt-20 flex flex-col gap-4 rounded-xl bg-(--brand) p-5 text-(--brand-fg) shadow-lg md:flex-row md:items-center md:gap-6 md:px-6"
+            style={enterDelay(200)}
+            className="portal-enter relative -mt-20 flex flex-col gap-4 rounded-xl bg-(--brand) p-5 text-(--brand-fg) shadow-lg md:flex-row md:items-center md:gap-6 md:px-6"
         >
             <p className="text-lg leading-snug font-bold md:max-w-sm">
                 ¿Ya radicó una solicitud? Consulte su respuesta con el número de
@@ -119,8 +124,8 @@ function TypeRow({
     const article = type.key === 'reclamo' ? 'un' : 'una';
 
     return (
-        <article className="flex gap-5 py-8 sm:gap-8">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-black text-(--brand)">
+        <Reveal as="article" className="group flex gap-5 py-8 sm:gap-8">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-black text-(--brand) transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6">
                 <Icon className="size-6" />
             </span>
             <div className="min-w-0 flex-1">
@@ -145,7 +150,7 @@ function TypeRow({
                     Enviar {article} {type.label.toLowerCase()}
                 </Link>
             </div>
-        </article>
+        </Reveal>
     );
 }
 
@@ -160,37 +165,40 @@ function RiskLevels({ levels }: { levels: RiskLevelOption[] }) {
                 Se clasifica en tres niveles según el riesgo para la persona:
             </p>
             <div className="mt-5 grid gap-4 md:grid-cols-3">
-                {levels.map((level) => {
+                {levels.map((level, i) => {
                     const vital = level.value === 'vital';
 
                     return (
-                        <Link
-                            key={level.value}
-                            href={`/radicar?tipo=reclamo&riesgo=${level.value}`}
-                            className={cn(
-                                'flex flex-col rounded-lg border-t-4 p-5 transition-shadow hover:shadow-md',
-                                vital
-                                    ? 'border-(--brand) bg-black text-white'
-                                    : 'border-(--brand) bg-[#f6f3f0] text-zinc-900',
-                                level.value === 'priorizado' &&
-                                    'border-(--brand-dark)',
-                            )}
-                        >
-                            <span className="w-fit rounded-full bg-(--brand) px-2.5 py-0.5 text-xs font-bold text-(--brand-fg)">
-                                {level.label}
-                            </span>
-                            <h4 className="mt-3 text-lg font-bold">
-                                {level.title}
-                            </h4>
-                            <p
+                        <Reveal key={level.value} delay={i} className="h-full">
+                            <Link
+                                href={`/radicar?tipo=reclamo&riesgo=${level.value}`}
                                 className={cn(
-                                    'mt-2 text-sm leading-relaxed',
-                                    vital ? 'text-white/85' : 'text-zinc-600',
+                                    'flex h-full flex-col rounded-lg border-t-4 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-md',
+                                    vital
+                                        ? 'border-(--brand) bg-black text-white'
+                                        : 'border-(--brand) bg-[#f6f3f0] text-zinc-900',
+                                    level.value === 'priorizado' &&
+                                        'border-(--brand-dark)',
                                 )}
                             >
-                                {level.description}
-                            </p>
-                        </Link>
+                                <span className="w-fit rounded-full bg-(--brand) px-2.5 py-0.5 text-xs font-bold text-(--brand-fg)">
+                                    {level.label}
+                                </span>
+                                <h4 className="mt-3 text-lg font-bold">
+                                    {level.title}
+                                </h4>
+                                <p
+                                    className={cn(
+                                        'mt-2 text-sm leading-relaxed',
+                                        vital
+                                            ? 'text-white/85'
+                                            : 'text-zinc-600',
+                                    )}
+                                >
+                                    {level.description}
+                                </p>
+                            </Link>
+                        </Reveal>
                     );
                 })}
             </div>

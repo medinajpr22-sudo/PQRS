@@ -50,9 +50,14 @@ Route::middleware([
     Route::post('consultar', [PqrsTrackingController::class, 'store'])
         ->middleware('throttle:pqrs-tracking')
         ->name('tracking.store');
-    Route::get('consultar/{pqrs}', [PqrsTrackingController::class, 'show'])->name('tracking.show');
+    // Un radicado que no existe responde igual que uno ajeno (vuelve a la
+    // consulta): así no se puede averiguar qué radicados existen.
+    Route::get('consultar/{pqrs}', [PqrsTrackingController::class, 'show'])
+        ->missing(fn () => to_route('tenant.tracking.create'))
+        ->name('tracking.show');
     Route::get('consultar/{pqrs}/adjuntos/{attachment}', [PqrsTrackingController::class, 'attachment'])
         ->scopeBindings()
+        ->missing(fn () => to_route('tenant.tracking.create'))
         ->name('tracking.attachment');
 
     // Panel de la empresa (administrador de empresa y agentes)

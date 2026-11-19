@@ -27,8 +27,8 @@ export default function Receipt({ receipt }: Props) {
             <Head title={`Radicado ${receipt.radicado}`} />
 
             <PortalCard className="mx-auto max-w-2xl text-center">
-                <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                    <CheckCircle2 className="size-9" />
+                <span className="portal-pop mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <CheckCircle2 className="portal-check size-9" />
                 </span>
                 <h2 className="mt-4 text-2xl font-bold tracking-tight">
                     ¡Tu solicitud fue radicada!

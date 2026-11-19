@@ -10,6 +10,9 @@ export type TenantTheme = {
     font: string;
     logo_path: string | null;
     logo_url: string | null;
+    /** Ícono de la pestaña del navegador; si no hay, se usa el logo. */
+    icon_path?: string | null;
+    icon_url?: string | null;
     hero_title: string;
     hero_subtitle: string;
     footer_text: string;
@@ -57,6 +60,10 @@ export type FormSchema = {
     max_attachments: number;
     /** Reclamos en salud: el ciudadano elige el nivel de riesgo. */
     risk_levels: boolean;
+    /** Salud: paciente afectado, EPS, régimen, fecha de atención y aviso Supersalud. */
+    health_data: boolean;
+    /** Servicios que presta la empresa; vacío = no se pregunta. */
+    services: string[];
     privacy_policy_url: string;
     privacy_text: string;
 };

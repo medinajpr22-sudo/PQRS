@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import { ExternalLink, FilePlus2, Home, Search } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
+import { enterDelay } from '@/components/portal/reveal';
 import { readableTextColor } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { TenantTheme } from '@/types';
@@ -259,11 +260,18 @@ function SaludLayout({
                         </nav>
                     </div>
                     <div className="pt-10 pb-24 md:pt-14">
-                        <h1 className="max-w-3xl text-4xl leading-tight font-bold md:text-5xl">
+                        <h1
+                            key={title ?? 'home'}
+                            className="portal-enter max-w-3xl text-4xl leading-tight font-bold md:text-5xl"
+                        >
                             {title ?? theme.hero_title}
                         </h1>
                         {(description ?? theme.hero_subtitle) && (
-                            <p className="mt-4 max-w-2xl text-base text-white/80 md:text-lg">
+                            <p
+                                key={title ?? 'home'}
+                                style={enterDelay(120)}
+                                className="portal-enter mt-4 max-w-2xl text-base text-white/80 md:text-lg"
+                            >
                                 {description ?? theme.hero_subtitle}
                             </p>
                         )}
@@ -356,7 +364,7 @@ function CorporateLayout({
             <section className="relative overflow-hidden bg-(--brand) text-(--brand-fg)">
                 <div
                     aria-hidden
-                    className="absolute inset-0 opacity-20"
+                    className="portal-drift absolute inset-0 opacity-20"
                     style={{
                         backgroundImage:
                             'radial-gradient(circle at 85% 20%, var(--brand-accent) 0, transparent 35%), radial-gradient(circle at 10% 100%, var(--brand-dark) 0, transparent 45%)',
@@ -364,11 +372,18 @@ function CorporateLayout({
                 />
                 <div className="relative mx-auto max-w-6xl px-4 pt-12 pb-24 sm:px-6 md:pt-16">
                     <span className="mb-4 inline-block h-1 w-12 rounded-full bg-(--brand-accent)" />
-                    <h1 className="max-w-3xl text-3xl font-bold tracking-tight md:text-4xl">
+                    <h1
+                        key={title ?? 'home'}
+                        className="portal-enter max-w-3xl text-3xl font-bold tracking-tight md:text-4xl"
+                    >
                         {title ?? theme.hero_title}
                     </h1>
                     {(description ?? theme.hero_subtitle) && (
-                        <p className="mt-3 max-w-2xl text-base opacity-90 md:text-lg">
+                        <p
+                            key={title ?? 'home'}
+                            style={enterDelay(120)}
+                            className="portal-enter mt-3 max-w-2xl text-base opacity-90 md:text-lg"
+                        >
                             {description ?? theme.hero_subtitle}
                         </p>
                     )}
@@ -442,11 +457,11 @@ function ModernLayout({
             >
                 <div
                     aria-hidden
-                    className="absolute -right-24 -bottom-24 size-80 rounded-full bg-(--brand-accent) opacity-25 blur-2xl"
+                    className="portal-drift absolute -right-24 -bottom-24 size-80 rounded-full bg-(--brand-accent) opacity-25 blur-2xl"
                 />
                 <div
                     aria-hidden
-                    className="absolute -top-20 -left-20 size-64 rounded-full bg-white opacity-10"
+                    className="portal-drift absolute -top-20 -left-20 size-64 rounded-full bg-white opacity-10 [animation-direction:alternate-reverse]"
                 />
                 <div className="relative flex h-full flex-col gap-8 p-6 sm:p-10">
                     <div className="flex items-center gap-3">
@@ -463,11 +478,18 @@ function ModernLayout({
                     </div>
 
                     <div>
-                        <h1 className="text-3xl leading-tight font-bold tracking-tight lg:text-4xl">
+                        <h1
+                            key={title ?? 'home'}
+                            className="portal-enter text-3xl leading-tight font-bold tracking-tight lg:text-4xl"
+                        >
                             {title ?? theme.hero_title}
                         </h1>
                         {(description ?? theme.hero_subtitle) && (
-                            <p className="mt-4 text-base opacity-90">
+                            <p
+                                key={title ?? 'home'}
+                                style={enterDelay(120)}
+                                className="portal-enter mt-4 text-base opacity-90"
+                            >
                                 {description ?? theme.hero_subtitle}
                             </p>
                         )}
@@ -556,11 +578,18 @@ function MinimalLayout({
                     ))}
                 </nav>
                 <div className="pt-4">
-                    <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+                    <h1
+                        key={title ?? 'home'}
+                        className="portal-enter text-2xl font-semibold tracking-tight md:text-3xl"
+                    >
                         {title ?? theme.hero_title}
                     </h1>
                     {(description ?? theme.hero_subtitle) && (
-                        <p className="mx-auto mt-2 max-w-xl text-zinc-500">
+                        <p
+                            key={title ?? 'home'}
+                            style={enterDelay(120)}
+                            className="portal-enter mx-auto mt-2 max-w-xl text-zinc-500"
+                        >
                             {description ?? theme.hero_subtitle}
                         </p>
                     )}

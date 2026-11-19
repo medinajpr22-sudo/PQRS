@@ -25,6 +25,17 @@ use Illuminate\Support\Carbon;
  * @property string|null $requester_document
  * @property string $requester_email
  * @property string|null $requester_phone
+ * @property bool|null $requester_is_affected Nulo si la empresa no pide datos de salud
+ * @property string|null $requester_relationship Parentesco de quien radica con el afectado
+ * @property string|null $affected_name
+ * @property string|null $affected_document_type
+ * @property string|null $affected_document
+ * @property string|null $affected_phone
+ * @property string|null $affected_email
+ * @property string|null $eps
+ * @property string|null $health_regime
+ * @property string|null $service Servicio recibido
+ * @property Carbon|null $attended_on Fecha de atención
  * @property string $subject
  * @property string $description
  * @property array<int, array{key: string, label: string, value: mixed}>|null $extra_fields
@@ -48,6 +59,8 @@ class Pqrs extends Model
             'status' => PqrsStatus::class,
             'risk_level' => RiskLevel::class,
             'extra_fields' => 'array',
+            'requester_is_affected' => 'boolean',
+            'attended_on' => 'date',
             'due_at' => 'datetime',
             'responded_at' => 'datetime',
             'closed_at' => 'datetime',

@@ -3,6 +3,7 @@ import {
     ArrowLeft,
     Download,
     FileText,
+    HeartPulse,
     Lock,
     Mail,
     MapPin,
@@ -56,6 +57,18 @@ type Props = {
         requester_document_type_label: string | null;
         requester_document: string | null;
         requester_phone: string | null;
+        health: {
+            requester_is_affected: boolean | null;
+            relationship: string | null;
+            affected_name: string | null;
+            affected_document: string | null;
+            affected_phone: string | null;
+            affected_email: string | null;
+            eps: string | null;
+            health_regime: string | null;
+            service: string | null;
+            attended_on: string | null;
+        } | null;
         description: string;
         extra_fields: {
             key: string;
@@ -72,6 +85,8 @@ type Props = {
     transitions: StatusTransition[];
     staff: StaffOption[];
     canAssignOthers: boolean;
+    /** Con responsable, solo él o un administrador cambian el estado. */
+    canChangeStatus: boolean;
     sedes: { value: number; label: string }[];
 };
 
@@ -120,6 +135,7 @@ export default function PqrsShow({
     transitions,
     staff,
     canAssignOthers,
+    canChangeStatus,
     sedes,
 }: Props) {
     const { auth, errors } = usePage().props;
@@ -230,7 +246,16 @@ export default function PqrsShow({
                         <NativeSelect
                             aria-label="Cambiar estado"
                             value=""
-                            disabled={saving || transitions.length === 0}
+                            disabled={
+                                saving ||
+                                transitions.length === 0 ||
+                                !canChangeStatus
+                            }
+                            title={
+                                canChangeStatus
+                                    ? undefined
+                                    : 'Solo el responsable o un administrador pueden cambiar el estado.'
+                            }
                             onChange={(e) => onSelectStatus(e.target.value)}
                             className="w-56"
                         >
@@ -750,6 +775,8 @@ export default function PqrsShow({
                             </CardContent>
                         </Card>
 
+                        {pqrs.health && <HealthCard health={pqrs.health} />}
+
                         <Card>
                             <CardHeader>
                                 <CardTitle>Plazos</CardTitle>
@@ -852,6 +879,89 @@ function displayValue(type: string, value: unknown): string {
     }
 
     return String(value as string | number | boolean);
+}
+
+function HealthCard({
+    health,
+}: {
+    health: NonNullable<Props['pqrs']['health']>;
+}) {
+    const care = [
+        { label: 'Servicio', value: health.service },
+        {
+            label: 'Fecha de atención',
+            value: health.attended_on
+                ? formatDate(`${health.attended_on}T12:00:00`)
+                : null,
+        },
+        { label: 'EPS', value: health.eps },
+        { label: 'Régimen', value: health.health_regime },
+    ].filter((row): row is { label: string; value: string } => !!row.value);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Paciente y atención</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+                {health.requester_is_affected === true && (
+                    <p className="flex items-center gap-2 text-muted-foreground">
+                        <HeartPulse className="size-4" />
+                        El solicitante es el paciente afectado.
+                    </p>
+                )}
+                {health.requester_is_affected === false && (
+                    <div className="space-y-3">
+                        <p className="flex items-center gap-2 font-medium">
+                            <HeartPulse className="size-4 text-muted-foreground" />
+                            {health.affected_name}
+                        </p>
+                        {health.affected_document && (
+                            <p className="text-muted-foreground">
+                                {health.affected_document}
+                            </p>
+                        )}
+                        {health.affected_email && (
+                            <a
+                                href={`mailto:${health.affected_email}`}
+                                className="flex items-center gap-2 hover:underline"
+                            >
+                                <Mail className="size-4 text-muted-foreground" />
+                                {health.affected_email}
+                            </a>
+                        )}
+                        {health.affected_phone && (
+                            <a
+                                href={`tel:${health.affected_phone}`}
+                                className="flex items-center gap-2 hover:underline"
+                            >
+                                <Phone className="size-4 text-muted-foreground" />
+                                {health.affected_phone}
+                            </a>
+                        )}
+                        <p className="text-muted-foreground">
+                            Lo radicó otra persona
+                            {health.relationship
+                                ? ` (parentesco: ${health.relationship})`
+                                : ''}
+                            .
+                        </p>
+                    </div>
+                )}
+                {care.length > 0 && (
+                    <dl className="grid gap-3 border-t pt-4 first:border-t-0 first:pt-0">
+                        {care.map((row) => (
+                            <Row
+                                key={row.label}
+                                label={row.label}
+                                value={row.value}
+                            />
+                        ))}
+                    </dl>
+                )}
+            </CardContent>
+        </Card>
+    );
 }
 
 function Row({ label, value }: { label: string; value: string }) {

@@ -39,6 +39,8 @@ class TenantDefaults
             'panel_accent' => '#c62833',
             'font' => 'circe-rounded',
             'logo_path' => null,
+            // Ícono de la pestaña del navegador (favicon). Si no hay, se usa el logo.
+            'icon_path' => null,
             'hero_title' => 'Peticiones, quejas, reclamos y sugerencias',
             'hero_subtitle' => $companyName !== ''
                 ? "En {$companyName} queremos escucharte. Radica tu solicitud y haz seguimiento en línea."
@@ -68,6 +70,12 @@ class TenantDefaults
             'max_attachments' => 3,
             // Reclamos en salud: el ciudadano elige el nivel de riesgo (Supersalud).
             'risk_levels' => false,
+            // Empresas de salud: paciente afectado, EPS, régimen, fecha de
+            // atención y el aviso de la Superintendencia Nacional de Salud.
+            'health_data' => true,
+            // Servicios que presta la empresa (Hemodiálisis, Consulta
+            // externa…). Si hay alguno, el ciudadano elige el que recibió.
+            'services' => [],
             'privacy_policy_url' => '',
             'privacy_text' => 'Autorizo el tratamiento de mis datos personales conforme a la Ley 1581 de 2012 y la política de tratamiento de datos de la empresa.',
         ];

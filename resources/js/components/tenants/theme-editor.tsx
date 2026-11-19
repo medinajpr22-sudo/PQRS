@@ -1,5 +1,5 @@
 import { useForm } from '@inertiajs/react';
-import { ImageUp, Monitor, Trash2 } from 'lucide-react';
+import { ImageUp, Monitor, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import TenantThemeController from '@/actions/App/Http/Controllers/Central/TenantThemeController';
 import InputError from '@/components/input-error';
@@ -86,6 +86,8 @@ export function ThemeEditor({
         website_url: theme.website_url ?? '',
         logo: null as File | null,
         remove_logo: false,
+        icon: null as File | null,
+        remove_icon: false,
     });
 
     const font = fonts.find((f) => f.value === form.data.font);
@@ -118,6 +120,15 @@ export function ThemeEditor({
         ? null
         : (logoPreview ?? theme.logo_url);
 
+    const iconPreview = useMemo(
+        () => (form.data.icon ? URL.createObjectURL(form.data.icon) : null),
+        [form.data.icon],
+    );
+
+    const currentIcon = form.data.remove_icon
+        ? null
+        : (iconPreview ?? theme.icon_url ?? null);
+
     const previewTheme: TenantTheme = {
         ...theme,
         ...form.data,
@@ -131,7 +142,13 @@ export function ThemeEditor({
             forceFormData: true,
             preserveScroll: true,
             onSuccess: () =>
-                form.setData((d) => ({ ...d, logo: null, remove_logo: false })),
+                form.setData((d) => ({
+                    ...d,
+                    logo: null,
+                    remove_logo: false,
+                    icon: null,
+                    remove_icon: false,
+                })),
         });
     };
 
@@ -177,72 +194,57 @@ export function ThemeEditor({
                         <CardTitle>Marca</CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-5">
-                        <div className="grid gap-2">
-                            <Label>Logo</Label>
-                            <div className="flex items-center gap-4">
-                                <div className="flex size-16 items-center justify-center overflow-hidden rounded-lg border bg-white p-1.5">
-                                    {currentLogo ? (
-                                        <img
-                                            src={currentLogo}
-                                            alt=""
-                                            className="max-h-full max-w-full object-contain"
-                                        />
-                                    ) : (
-                                        <ImageUp className="size-6 text-muted-foreground" />
-                                    )}
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        asChild
-                                    >
-                                        <label className="cursor-pointer">
-                                            <ImageUp />
-                                            Subir logo
-                                            <input
-                                                type="file"
-                                                accept="image/png,image/jpeg,image/webp"
-                                                className="sr-only"
-                                                onChange={(e) => {
-                                                    const file =
-                                                        e.target.files?.[0] ??
-                                                        null;
-                                                    form.setData((d) => ({
-                                                        ...d,
-                                                        logo: file,
-                                                        remove_logo: false,
-                                                    }));
-                                                }}
-                                            />
-                                        </label>
-                                    </Button>
-                                    {currentLogo && (
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() =>
-                                                form.setData((d) => ({
-                                                    ...d,
-                                                    logo: null,
-                                                    remove_logo: true,
-                                                }))
-                                            }
-                                        >
-                                            <Trash2 />
-                                            Quitar
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                                PNG, JPG o WEBP, máximo 2 MB. Ideal: fondo
-                                transparente.
-                            </p>
-                            <InputError message={form.errors.logo} />
-                        </div>
+                        <ImagePicker
+                            label="Logo"
+                            buttonLabel="Subir logo"
+                            current={currentLogo}
+                            accept="image/png,image/jpeg,image/webp"
+                            hint="Va en el encabezado del portal, en el panel y en los correos. PNG, JPG o WEBP, máximo 2 MB. Ideal: fondo transparente."
+                            error={form.errors.logo}
+                            onPick={(file) =>
+                                form.setData((d) => ({
+                                    ...d,
+                                    logo: file,
+                                    remove_logo: false,
+                                }))
+                            }
+                            onRemove={() =>
+                                form.setData((d) => ({
+                                    ...d,
+                                    logo: null,
+                                    remove_logo: true,
+                                }))
+                            }
+                        />
+
+                        <ImagePicker
+                            label="Ícono"
+                            buttonLabel="Subir ícono"
+                            current={currentIcon}
+                            accept="image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon"
+                            hint="Solo para la pestaña del navegador y el acceso directo en el celular. Cuadrado, mínimo 64 × 64 px; PNG, JPG, WEBP o ICO, máximo 1 MB. Si no subes uno, se usa el logo."
+                            error={form.errors.icon}
+                            square
+                            onPick={(file) =>
+                                form.setData((d) => ({
+                                    ...d,
+                                    icon: file,
+                                    remove_icon: false,
+                                }))
+                            }
+                            onRemove={() =>
+                                form.setData((d) => ({
+                                    ...d,
+                                    icon: null,
+                                    remove_icon: true,
+                                }))
+                            }
+                        >
+                            <BrowserTabPreview
+                                icon={currentIcon ?? currentLogo}
+                                title={tenantName}
+                            />
+                        </ImagePicker>
 
                         <div className="grid gap-5 sm:grid-cols-2">
                             <ColorField
@@ -541,6 +543,115 @@ function LayoutThumb({
                     <div className="mt-1.5 w-2/3 flex-1 rounded-sm border" />
                 </div>
             )}
+        </div>
+    );
+}
+
+/**
+ * Imagen de la marca (logo o ícono) con vista previa, subir y quitar.
+ */
+function ImagePicker({
+    label,
+    buttonLabel,
+    current,
+    accept,
+    hint,
+    error,
+    square = false,
+    onPick,
+    onRemove,
+    children,
+}: {
+    label: string;
+    buttonLabel: string;
+    current: string | null;
+    accept: string;
+    hint: string;
+    error?: string;
+    square?: boolean;
+    onPick: (file: File | null) => void;
+    onRemove: () => void;
+    children?: React.ReactNode;
+}) {
+    return (
+        <div className="grid gap-2">
+            <Label>{label}</Label>
+            <div className="flex flex-wrap items-center gap-4">
+                <div
+                    className={cn(
+                        'flex size-16 shrink-0 items-center justify-center overflow-hidden border bg-white',
+                        square ? 'rounded-xl p-2' : 'rounded-lg p-1.5',
+                    )}
+                >
+                    {current ? (
+                        <img
+                            src={current}
+                            alt=""
+                            className="max-h-full max-w-full object-contain"
+                        />
+                    ) : (
+                        <ImageUp className="size-6 text-muted-foreground" />
+                    )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" asChild>
+                        <label className="cursor-pointer">
+                            <ImageUp />
+                            {buttonLabel}
+                            <input
+                                type="file"
+                                accept={accept}
+                                className="sr-only"
+                                onChange={(e) => {
+                                    onPick(e.target.files?.[0] ?? null);
+                                    // Permite volver a elegir el mismo archivo.
+                                    e.target.value = '';
+                                }}
+                            />
+                        </label>
+                    </Button>
+                    {current && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={onRemove}
+                        >
+                            <Trash2 />
+                            Quitar
+                        </Button>
+                    )}
+                </div>
+                {children}
+            </div>
+            <p className="text-xs text-muted-foreground">{hint}</p>
+            <InputError message={error} />
+        </div>
+    );
+}
+
+/**
+ * Así se verá el ícono en una pestaña del navegador.
+ */
+function BrowserTabPreview({
+    icon,
+    title,
+}: {
+    icon: string | null;
+    title: string;
+}) {
+    return (
+        <div
+            aria-hidden
+            className="flex w-56 items-center gap-2 rounded-t-lg border border-b-0 bg-muted/60 px-3 py-2 text-xs sm:ml-auto"
+        >
+            {icon ? (
+                <img src={icon} alt="" className="size-4 object-contain" />
+            ) : (
+                <span className="size-4 rounded-sm bg-muted-foreground/30" />
+            )}
+            <span className="flex-1 truncate">{title}</span>
+            <X className="size-3 text-muted-foreground" />
         </div>
     );
 }

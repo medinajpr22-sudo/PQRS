@@ -8,7 +8,6 @@ use Stancl\Tenancy\Bootstrappers\FilesystemTenancyBootstrapper;
 use Stancl\Tenancy\Bootstrappers\QueueTenancyBootstrapper;
 use Stancl\Tenancy\Database\Models\Domain;
 use Stancl\Tenancy\TenantDatabaseManagers\MySQLDatabaseManager;
-use Stancl\Tenancy\TenantDatabaseManagers\PostgreSQLDatabaseManager;
 use Stancl\Tenancy\TenantDatabaseManagers\SQLiteDatabaseManager;
 use Stancl\Tenancy\UUIDGenerator;
 
@@ -67,7 +66,8 @@ return [
             'sqlite' => SQLiteDatabaseManager::class,
             'mysql' => MySQLDatabaseManager::class,
             'mariadb' => MySQLDatabaseManager::class,
-            'pgsql' => PostgreSQLDatabaseManager::class,
+            // Propio: borra con FORCE y consulta con parámetros (ver la clase).
+            'pgsql' => App\Tenancy\PostgreSQLDatabaseManager::class,
 
         /**
          * Use this database manager for MySQL to have a DB user created for each tenant database.

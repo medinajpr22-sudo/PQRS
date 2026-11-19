@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant\Admin;
 
 use App\Enums\PqrsStatus;
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\Pqrs;
 use App\Models\PqrsActivity;
@@ -27,10 +28,13 @@ class PqrsController extends Controller
         $tenant = tenant();
         $types = collect($tenant->resolvedFormSchema()['types'])->keyBy('key');
 
+        // Solo textos: un «?status[]=x» en la URL no debe tumbar la página.
+        $text = fn (string $key): string => is_string($value = $request->query($key)) ? $value : '';
+
         $filters = [
-            'search' => trim((string) $request->query('search')),
-            'status' => $request->query('status'),
-            'type' => $request->query('type'),
+            'search' => trim($text('search')),
+            'status' => $text('status'),
+            'type' => $text('type'),
             'overdue' => $request->boolean('overdue'),
             // "me" = Mis PQRS, "none" = sin responsable, o el id de un usuario
             'assigned' => is_string($request->query('assigned')) ? $request->query('assigned') : null,
@@ -69,7 +73,7 @@ class PqrsController extends Controller
             'filters' => $filters,
             'statuses' => PqrsStatus::options(),
             'types' => $types->map(fn ($t) => ['value' => $t['key'], 'label' => $t['label']])->values(),
-            'staff' => self::staffOptions(),
+            'staff' => self::staffOptions($user),
             'sedes' => self::sedeFilterOptions($user),
             // Para las píldoras «Todas · Mis PQRS · Sin responsable».
             'counts' => [
@@ -101,6 +105,7 @@ class PqrsController extends Controller
                 'requester_document_type_label' => PqrsFormRules::DOCUMENT_TYPES[$pqrs->requester_document_type] ?? null,
                 'requester_document' => $pqrs->requester_document,
                 'requester_phone' => $pqrs->requester_phone,
+                'health' => self::healthData($pqrs),
                 'description' => $pqrs->description,
                 'extra_fields' => $pqrs->extra_fields ?? [],
                 'responded_at' => $pqrs->responded_at,
@@ -124,10 +129,45 @@ class PqrsController extends Controller
             // Solo quienes pueden ver la sede de esta PQRS pueden ser responsables.
             'staff' => self::assignableStaff($pqrs->sede_id),
             'canAssignOthers' => $request->user()->isAdmin(),
+            // Con responsable, solo él o un administrador cambian el estado.
+            'canChangeStatus' => $request->user()->isAdmin()
+                || $pqrs->assigned_to === null
+                || $pqrs->assigned_to === $request->user()->id,
             // Cualquier sede activa: si el paciente se equivocó, se traslada.
             'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),
         ]);
+    }
+
+    /**
+     * Paciente afectado y datos de la atención (empresas de salud).
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function healthData(Pqrs $pqrs): ?array
+    {
+        $hasCareData = $pqrs->eps || $pqrs->health_regime || $pqrs->service || $pqrs->attended_on;
+
+        if ($pqrs->requester_is_affected === null && ! $hasCareData) {
+            return null;
+        }
+
+        return [
+            'requester_is_affected' => $pqrs->requester_is_affected,
+            'relationship' => $pqrs->requester_relationship,
+            'affected_name' => $pqrs->affected_name,
+            'affected_document' => $pqrs->affected_document
+                ? trim(PqrsFormRules::documentLabel($pqrs->affected_document_type).' '.$pqrs->affected_document)
+                : null,
+            'affected_phone' => $pqrs->affected_phone,
+            'affected_email' => $pqrs->affected_email,
+            'eps' => $pqrs->eps,
+            'health_regime' => $pqrs->health_regime
+                ? (PqrsFormRules::HEALTH_REGIMES[$pqrs->health_regime] ?? $pqrs->health_regime)
+                : null,
+            'service' => $pqrs->service,
+            'attended_on' => $pqrs->attended_on?->toDateString(),
+        ];
     }
 
     public function updateStatus(Request $request, Pqrs $pqrs, PqrsService $service): RedirectResponse
@@ -198,13 +238,20 @@ class PqrsController extends Controller
     }
 
     /**
-     * Usuarios activos, para filtrar la bandeja por responsable.
+     * Usuarios activos, para filtrar la bandeja por responsable. A un agente
+     * solo se le muestran los administradores y los compañeros de sus sedes
+     * (los únicos que pueden tener a cargo las PQRS que él ve).
      *
      * @return Collection<int, array{value: int, label: string}>
      */
-    public static function staffOptions(): Collection
+    public static function staffOptions(User $viewer): Collection
     {
+        $sedeIds = $viewer->accessibleSedeIds();
+
         return User::where('is_active', true)
+            ->when($sedeIds !== null, fn ($q) => $q->where(fn ($q) => $q
+                ->where('role', UserRole::Admin)
+                ->orWhereHas('sedes', fn ($q) => $q->whereKey($sedeIds))))
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn (User $u) => ['value' => $u->id, 'label' => $u->name]);

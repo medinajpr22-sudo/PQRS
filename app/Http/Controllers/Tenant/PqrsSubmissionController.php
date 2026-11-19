@@ -35,9 +35,11 @@ class PqrsSubmissionController extends Controller
                 'max_kb' => config('pqrs.attachments.max_kb'),
                 'mimes' => config('pqrs.attachments.mimes'),
             ],
-            'initialType' => $request->query('tipo'),
+            'initialType' => is_string($tipo = $request->query('tipo')) ? $tipo : null,
+            'patientDocumentTypes' => collect(PqrsFormRules::PATIENT_DOCUMENT_TYPES)->map(fn ($label, $value) => compact('value', 'label'))->values(),
+            'healthRegimes' => collect(PqrsFormRules::HEALTH_REGIMES)->map(fn ($label, $value) => compact('value', 'label'))->values(),
             'riskLevels' => ! empty($schema['risk_levels']) ? RiskLevel::options() : [],
-            'initialRisk' => RiskLevel::tryFrom((string) $request->query('riesgo'))?->value,
+            'initialRisk' => is_string($riesgo = $request->query('riesgo')) ? RiskLevel::tryFrom($riesgo)?->value : null,
             // Si la empresa tiene sedes, el ciudadano elige a cuál dirige su solicitud.
             'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),
@@ -62,6 +64,16 @@ class PqrsSubmissionController extends Controller
         $tenant = tenant();
         $schema = $tenant->resolvedFormSchema();
 
+        // Campo trampa: está oculto para las personas, pero los robots que
+        // llenan formularios en masa escriben en todos los campos.
+        if (filled($request->input('website'))) {
+            throw ValidationException::withMessages([
+                'altcha' => 'No pudimos verificar que no eres un robot. Recarga la página e inténtalo de nuevo.',
+            ]);
+        }
+
+        $request->merge(PqrsFormRules::normalize($request->all()));
+
         $rules = PqrsFormRules::rules($schema, array_values(array_map('intval', Sede::active()->pluck('id')->all())));
 
         if ($captcha->enabled()) {
@@ -74,7 +86,11 @@ class PqrsSubmissionController extends Controller
 
         $data = $request->validate(
             $rules,
-            ['altcha.required' => 'Marque la casilla «No soy un robot».'],
+            [
+                'altcha.required' => 'Marque la casilla «No soy un robot».',
+                'requester_is_affected.required' => 'Indica quién recibió el servicio.',
+                'attended_on.before_or_equal' => 'La fecha de atención no puede ser posterior a hoy.',
+            ],
             PqrsFormRules::attributes($schema),
         );
 

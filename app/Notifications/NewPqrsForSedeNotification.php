@@ -63,7 +63,9 @@ class NewPqrsForSedeNotification extends Notification implements ShouldQueue
                     'Tipo' => $this->tenant->pqrsTypeLabel($pqrs->type).($pqrs->risk_level ? ' · '.$pqrs->risk_level->label() : ''),
                     'Sede' => $sede,
                     'Asunto' => $pqrs->subject,
+                    'Servicio' => $pqrs->service,
                     'Solicitante' => $pqrs->requester_name,
+                    'Paciente' => $pqrs->requester_is_affected === false ? $pqrs->affected_name : null,
                     'Vence' => $pqrs->due_at?->translatedFormat('j \\d\\e F \\d\\e Y'),
                 ],
             ])
