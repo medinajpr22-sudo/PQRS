@@ -1,5 +1,10 @@
 <?php
 
+use AltchaOrg\Altcha\Algorithm\Pbkdf2;
+use AltchaOrg\Altcha\Altcha;
+use AltchaOrg\Altcha\Challenge;
+use AltchaOrg\Altcha\Payload;
+use AltchaOrg\Altcha\SolveChallengeOptions;
 use App\Enums\PqrsStatus;
 use App\Enums\UserRole;
 use App\Models\Pqrs;
@@ -757,4 +762,100 @@ test('logging in records the last access shown in the users page', function () {
         ->assertRedirect(route('tenant.admin.dashboard'));
 
     expect($tenant->run(fn () => User::where('email', 'rosa@staff.test')->value('last_login_at')))->not->toBeNull();
+});
+
+/**
+ * Activa el «No soy un robot» con un reto fácil para que las pruebas sean rápidas.
+ */
+function enableCaptcha(): void
+{
+    config(['pqrs.captcha' => [
+        'enabled' => true,
+        'cost' => 1,
+        'counter' => ['min' => 1, 'max' => 20],
+        'expires_minutes' => 20,
+    ]]);
+}
+
+/**
+ * Pide un reto al portal y lo resuelve como lo haría el navegador.
+ */
+function solvedCaptcha(Tenant $tenant): string
+{
+    $json = test()->getJson(portal($tenant, 'radicar/verificacion'))->assertOk()->json();
+    $challenge = Challenge::fromArray($json);
+    $solution = (new Altcha)->solveChallenge(new SolveChallengeOptions(challenge: $challenge, algorithm: new Pbkdf2));
+
+    return (new Payload($challenge, $solution))->toBase64();
+}
+
+test('the pqrs form requires the not-a-robot check and each check works once', function () {
+    enableCaptcha();
+    $tenant = makeCompany('robot');
+
+    $this->get(portal($tenant, 'radicar'))
+        ->assertInertia(fn ($page) => $page->where('captcha', true));
+
+    // Sin marcar la casilla, o con una solución inventada, no se radica nada.
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasErrors('altcha');
+    $this->post(portal($tenant, 'radicar'), validSubmission(['altcha' => base64_encode('{"challenge":{},"solution":{}}')]))
+        ->assertSessionHasErrors('altcha');
+
+    // Una solución con la clave alterada tampoco sirve.
+    $forged = json_decode(base64_decode(solvedCaptcha($tenant)), true);
+    $forged['solution']['derivedKey'] = str_repeat('0', 64);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['altcha' => base64_encode(json_encode($forged))]))
+        ->assertSessionHasErrors('altcha');
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(0);
+
+    // Con la casilla marcada se radica, pero la misma verificación no se puede repetir.
+    $captcha = solvedCaptcha($tenant);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['altcha' => $captcha]))
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(portal($tenant, 'radicado'));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['altcha' => $captcha]))
+        ->assertSessionHasErrors('altcha');
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(1);
+});
+
+test('a not-a-robot check only works for the company that issued it and expires', function () {
+    enableCaptcha();
+    $a = makeCompany('robota');
+    $b = makeCompany('robotb');
+
+    $this->post(portal($b, 'radicar'), validSubmission(['altcha' => solvedCaptcha($a)]))
+        ->assertSessionHasErrors('altcha');
+
+    $captcha = solvedCaptcha($b);
+    $this->travel(21)->minutes();
+    $this->post(portal($b, 'radicar'), validSubmission(['altcha' => $captcha]))
+        ->assertSessionHasErrors('altcha');
+
+    expect($b->run(fn () => Pqrs::count()))->toBe(0);
+});
+
+test('fixing other fields does not spend the not-a-robot check', function () {
+    enableCaptcha();
+    $tenant = makeCompany('robotc');
+    $captcha = solvedCaptcha($tenant);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['subject' => '', 'altcha' => $captcha]))
+        ->assertSessionHasErrors('subject')
+        ->assertSessionDoesntHaveErrors('altcha');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['altcha' => $captcha]))
+        ->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(1);
+});
+
+test('without the not-a-robot check enabled the form works as before', function () {
+    $tenant = makeCompany('robotd');
+
+    $this->getJson(portal($tenant, 'radicar/verificacion'))->assertNotFound();
+    $this->get(portal($tenant, 'radicar'))
+        ->assertInertia(fn ($page) => $page->where('captcha', false));
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
 });

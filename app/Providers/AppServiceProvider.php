@@ -53,8 +53,15 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureRateLimiting(): void
     {
-        RateLimiter::for('pqrs-submit', fn (Request $request) => Limit::perMinute(5)
-            ->by('pqrs-submit|'.tenant('id').'|'.$request->ip()));
+        // Además del «No soy un robot», cada conexión tiene un tope de PQRS
+        // por minuto y por hora. Cada límite necesita su propia clave.
+        RateLimiter::for('pqrs-submit', fn (Request $request) => [
+            Limit::perMinute(5)->by('pqrs-submit-minute|'.tenant('id').'|'.$request->ip()),
+            Limit::perHour(30)->by('pqrs-submit-hour|'.tenant('id').'|'.$request->ip()),
+        ]);
+
+        RateLimiter::for('pqrs-captcha', fn (Request $request) => Limit::perMinute(20)
+            ->by('pqrs-captcha|'.tenant('id').'|'.$request->ip()));
 
         RateLimiter::for('pqrs-tracking', fn (Request $request) => Limit::perMinute(10)
             ->by('pqrs-tracking|'.tenant('id').'|'.$request->ip()));

@@ -6,16 +6,20 @@ use App\Enums\RiskLevel;
 use App\Http\Controllers\Controller;
 use App\Models\Sede;
 use App\Models\Tenant;
+use App\Services\Captcha;
 use App\Services\PqrsFormRules;
 use App\Services\PqrsService;
+use Closure;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class PqrsSubmissionController extends Controller
 {
-    public function create(Request $request): Response
+    public function create(Request $request, Captcha $captcha): Response
     {
         /** @var Tenant $tenant */
         $tenant = tenant();
@@ -37,20 +41,50 @@ class PqrsSubmissionController extends Controller
             // Si la empresa tiene sedes, el ciudadano elige a cuál dirige su solicitud.
             'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),
+            'captcha' => $captcha->enabled(),
         ]);
     }
 
-    public function store(Request $request, PqrsService $service): RedirectResponse
+    /**
+     * Reto para la casilla «No soy un robot» del formulario.
+     */
+    public function captcha(Captcha $captcha): JsonResponse
+    {
+        abort_unless($captcha->enabled(), 404);
+
+        return response()->json($captcha->challenge())
+            ->header('Cache-Control', 'no-store');
+    }
+
+    public function store(Request $request, PqrsService $service, Captcha $captcha): RedirectResponse
     {
         /** @var Tenant $tenant */
         $tenant = tenant();
         $schema = $tenant->resolvedFormSchema();
 
+        $rules = PqrsFormRules::rules($schema, array_values(array_map('intval', Sede::active()->pluck('id')->all())));
+
+        if ($captcha->enabled()) {
+            $rules['altcha'] = ['required', function (string $attribute, mixed $value, Closure $fail) use ($captcha) {
+                if (! $captcha->verify($value)) {
+                    $fail('La verificación venció o no es válida. Marque de nuevo «No soy un robot».');
+                }
+            }];
+        }
+
         $data = $request->validate(
-            PqrsFormRules::rules($schema, array_values(array_map('intval', Sede::active()->pluck('id')->all()))),
-            [],
+            $rules,
+            ['altcha.required' => 'Marque la casilla «No soy un robot».'],
             PqrsFormRules::attributes($schema),
         );
+
+        // Se gasta solo cuando todo el formulario es válido; así el ciudadano
+        // puede corregir otros campos sin repetir la verificación.
+        if ($captcha->enabled() && ! $captcha->consume($request->input('altcha'))) {
+            throw ValidationException::withMessages([
+                'altcha' => 'Esta verificación ya se usó. Marque de nuevo «No soy un robot».',
+            ]);
+        }
 
         $files = $schema['allow_attachments'] ? array_values($request->file('attachments', [])) : [];
 

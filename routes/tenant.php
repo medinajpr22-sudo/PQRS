@@ -37,6 +37,9 @@ Route::middleware([
     Route::get('/', PortalController::class)->name('home');
 
     Route::get('radicar', [PqrsSubmissionController::class, 'create'])->name('pqrs.create');
+    Route::get('radicar/verificacion', [PqrsSubmissionController::class, 'captcha'])
+        ->middleware('throttle:pqrs-captcha')
+        ->name('pqrs.captcha');
     Route::post('radicar', [PqrsSubmissionController::class, 'store'])
         ->middleware('throttle:pqrs-submit')
         ->name('pqrs.store');

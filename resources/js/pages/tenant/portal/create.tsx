@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import PqrsSubmissionController from '@/actions/App/Http/Controllers/Tenant/PqrsSubmissionController';
 import InputError from '@/components/input-error';
 import { DynamicField, Required } from '@/components/portal/dynamic-field';
+import { NotARobot } from '@/components/portal/not-a-robot';
 import { PortalCard } from '@/components/portal/portal-card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,6 +24,7 @@ type Props = {
     sedes: { value: number; label: string }[];
     riskLevels: RiskLevelOption[];
     initialRisk: string | null;
+    captcha: boolean;
 };
 
 export default function CreatePqrs({
@@ -33,6 +35,7 @@ export default function CreatePqrs({
     sedes,
     riskLevels,
     initialRisk,
+    captcha,
 }: Props) {
     const [files, setFiles] = useState<File[]>([]);
     const fileInput = useRef<HTMLInputElement>(null);
@@ -516,6 +519,12 @@ export default function CreatePqrs({
                                 message={errors.privacy}
                                 className="mt-2"
                             />
+
+                            {captcha && (
+                                <div className="mt-5">
+                                    <NotARobot error={errors.altcha} />
+                                </div>
+                            )}
 
                             <div className="mt-6 flex flex-col-reverse items-center justify-between gap-3 border-t pt-5 sm:flex-row">
                                 <p className="text-xs text-zinc-500">
