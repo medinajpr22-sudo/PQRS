@@ -41,47 +41,34 @@ class NewPqrsForSedeNotification extends Notification implements ShouldQueue
     {
         $pqrs = $this->pqrs->loadMissing('sede');
         $sede = $pqrs->sede?->name;
-        $type = $this->typeLabel($pqrs->type);
+        $vital = $pqrs->risk_level === RiskLevel::Vital;
 
-        $mail = (new MailMessage)
+        return (new MailMessage)
             ->from(config('mail.from.address'), $this->tenant->name)
-            ->subject(($pqrs->risk_level === RiskLevel::Vital ? '[Riesgo vital] ' : '')
+            ->subject(($vital ? '[Riesgo vital] ' : '')
                 ."Nueva PQRS {$pqrs->radicado}".($sede ? " · sede {$sede}" : ''))
-            ->greeting('Hola '.($notifiable->name ?? '').',');
-
-        $mail->line(match (true) {
-            $this->movedBy !== null => "{$this->movedBy->name} trasladó la solicitud **{$pqrs->radicado}** a la sede {$sede}.",
-            $sede !== null => "Llegó una nueva solicitud a la sede {$sede}: **{$pqrs->radicado}**.",
-            default => "Llegó una nueva solicitud sin sede: **{$pqrs->radicado}**.",
-        });
-
-        if ($pqrs->risk_level === RiskLevel::Vital) {
-            $mail->line('**Es un reclamo de riesgo vital: atiéndelo con prioridad.**');
-        }
-
-        return $mail
-            ->line("Tipo: {$type}".($pqrs->risk_level ? ' · '.$pqrs->risk_level->label() : ''))
-            ->line("Asunto: {$pqrs->subject}")
-            ->line("Solicitante: {$pqrs->requester_name}")
-            ->line('Vence: '.$pqrs->due_at?->translatedFormat('d \d\e F \d\e Y'))
+            ->greeting('Hola '.($notifiable->name ?? '').',')
+            ->line(match (true) {
+                $this->movedBy !== null => "{$this->movedBy->name} trasladó esta solicitud a la sede {$sede}.",
+                $sede !== null => "Llegó una nueva solicitud a la sede {$sede}.",
+                default => 'Llegó una nueva solicitud.',
+            })
+            ->markdown('notifications::email', [
+                'alert' => $vital ? 'Reclamo de riesgo vital: atiéndelo con prioridad.' : null,
+                'highlight' => [
+                    'label' => $this->movedBy !== null ? 'Solicitud trasladada' : 'Nueva solicitud',
+                    'value' => $pqrs->radicado,
+                ],
+                'details' => [
+                    'Tipo' => $this->tenant->pqrsTypeLabel($pqrs->type).($pqrs->risk_level ? ' · '.$pqrs->risk_level->label() : ''),
+                    'Sede' => $sede,
+                    'Asunto' => $pqrs->subject,
+                    'Solicitante' => $pqrs->requester_name,
+                    'Vence' => $pqrs->due_at?->translatedFormat('j \\d\\e F \\d\\e Y'),
+                ],
+            ])
             ->action('Ver solicitud', $this->tenant->portalUrl().'/admin/pqrs/'.$pqrs->radicado)
             ->line('Para responderla, entra al panel y acepta ser el responsable.')
             ->salutation("Atentamente,\n{$this->tenant->name}");
-    }
-
-    /**
-     * Nombre del tipo de solicitud como lo configuró la empresa.
-     */
-    private function typeLabel(string $key): string
-    {
-        $types = $this->tenant->resolvedFormSchema()['types'] ?? [];
-
-        foreach (is_array($types) ? $types : [] as $type) {
-            if (is_array($type) && ($type['key'] ?? null) === $key) {
-                return (string) ($type['label'] ?? $key);
-            }
-        }
-
-        return $key;
     }
 }

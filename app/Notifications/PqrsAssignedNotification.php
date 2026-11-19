@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Enums\RiskLevel;
 use App\Models\Pqrs;
 use App\Models\Tenant;
 use App\Models\User;
@@ -37,14 +38,25 @@ class PqrsAssignedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        $pqrs = $this->pqrs->loadMissing('sede');
+
         return (new MailMessage)
             ->from(config('mail.from.address'), $this->tenant->name)
-            ->subject("Te asignaron la solicitud {$this->pqrs->radicado}")
+            ->subject("Te asignaron la solicitud {$pqrs->radicado}")
             ->greeting('Hola '.($notifiable->name ?? '').',')
-            ->line("{$this->assignedBy->name} te asignó la solicitud **{$this->pqrs->radicado}**.")
-            ->line("Asunto: {$this->pqrs->subject}")
-            ->line('Vence: '.$this->pqrs->due_at?->translatedFormat('d \d\e F \d\e Y'))
-            ->action('Ver solicitud', $this->tenant->portalUrl().'/admin/pqrs/'.$this->pqrs->radicado)
+            ->line("{$this->assignedBy->name} te asignó esta solicitud: ahora estás a cargo de responderla.")
+            ->markdown('notifications::email', [
+                'alert' => $pqrs->risk_level === RiskLevel::Vital ? 'Reclamo de riesgo vital: atiéndelo con prioridad.' : null,
+                'highlight' => ['label' => 'Solicitud asignada', 'value' => $pqrs->radicado],
+                'details' => [
+                    'Tipo' => $this->tenant->pqrsTypeLabel($pqrs->type).($pqrs->risk_level ? ' · '.$pqrs->risk_level->label() : ''),
+                    'Sede' => $pqrs->sede?->name,
+                    'Asunto' => $pqrs->subject,
+                    'Solicitante' => $pqrs->requester_name,
+                    'Vence' => $pqrs->due_at?->translatedFormat('j \\d\\e F \\d\\e Y'),
+                ],
+            ])
+            ->action('Ver solicitud', $this->tenant->portalUrl().'/admin/pqrs/'.$pqrs->radicado)
             ->salutation("Atentamente,\n{$this->tenant->name}");
     }
 }

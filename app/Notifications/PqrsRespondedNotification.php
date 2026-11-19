@@ -11,7 +11,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\HtmlString;
 
 /**
  * Le lleva al ciudadano la respuesta completa, con sus archivos adjuntos.
@@ -44,13 +43,12 @@ class PqrsRespondedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        $note = null;
         $mail = (new MailMessage)
             ->from(config('mail.from.address'), $this->tenant->name)
             ->subject("Respuesta a tu solicitud {$this->pqrs->radicado}")
             ->greeting("Hola {$this->pqrs->requester_name},")
-            ->line("Hemos dado respuesta a tu solicitud **{$this->pqrs->radicado}** ({$this->pqrs->subject}):")
-            // Respeta los saltos de línea que escribió el funcionario.
-            ->line(new HtmlString(nl2br(e((string) $this->activity->body), false)));
+            ->line('Ya tenemos respuesta para tu solicitud. Esto es lo que nuestro equipo te responde:');
 
         $files = $this->activity->attachments()->get();
 
@@ -64,14 +62,23 @@ class PqrsRespondedNotification extends Notification implements ShouldQueue
                     $mail->attach($disk->path($file->path), array_filter(['as' => $file->original_name, 'mime' => $file->mime_type]));
                 }
 
-                $mail->line('Adjuntamos '.($files->count() === 1 ? 'el archivo' : 'los archivos').' de la respuesta.');
+                $note = 'Adjuntamos '.($files->count() === 1 ? 'el archivo' : 'los archivos').' de la respuesta.';
             } else {
-                $mail->line('La respuesta incluye archivos adjuntos: puedes descargarlos al consultar tu radicado.');
+                $note = 'La respuesta incluye archivos adjuntos: puedes descargarlos al consultar tu radicado.';
             }
         }
 
         return $mail
+            ->markdown('notifications::email', [
+                'details' => [
+                    'Radicado' => $this->pqrs->radicado,
+                    'Asunto' => $this->pqrs->subject,
+                ],
+                'quote' => (string) $this->activity->body,
+                'quoteNote' => $note,
+            ])
             ->action('Consultar mi solicitud', $this->tenant->portalUrl().'/consultar?radicado='.urlencode($this->pqrs->radicado))
+            ->line('Si tienes alguna duda sobre esta respuesta, puedes radicar una nueva solicitud en nuestro portal.')
             ->salutation("Atentamente,\n{$this->tenant->name}");
     }
 }

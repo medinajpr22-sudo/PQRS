@@ -26,9 +26,9 @@ class TenantController extends Controller
         $tenants = Tenant::query()
             ->with('domains')
             ->when($search !== '', fn ($q) => $q->where(fn ($q) => $q
-                ->where('name', 'like', "%{$search}%")
-                ->orWhere('id', 'like', "%{$search}%")
-                ->orWhere('nit', 'like', "%{$search}%")))
+                ->whereLike('name', "%{$search}%")
+                ->orWhereLike('id', "%{$search}%")
+                ->orWhereLike('nit', "%{$search}%")))
             ->when(in_array($status, [Tenant::STATUS_ACTIVE, Tenant::STATUS_SUSPENDED], true), fn ($q) => $q->where('status', $status))
             ->orderBy('name')
             ->paginate(12)

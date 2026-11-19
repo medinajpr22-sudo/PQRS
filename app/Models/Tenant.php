@@ -181,6 +181,22 @@ class Tenant extends BaseTenant implements TenantWithDatabase
         return TenantDefaults::mergeFormSchema($this->form_schema);
     }
 
+    /**
+     * Nombre de un tipo de solicitud tal como lo configuró la empresa.
+     */
+    public function pqrsTypeLabel(string $key): string
+    {
+        $types = $this->resolvedFormSchema()['types'] ?? [];
+
+        foreach (is_array($types) ? $types : [] as $type) {
+            if (is_array($type) && ($type['key'] ?? null) === $key) {
+                return (string) ($type['label'] ?? $key);
+            }
+        }
+
+        return $key;
+    }
+
     public function primaryDomain(): ?string
     {
         return $this->domains->first()?->domain;

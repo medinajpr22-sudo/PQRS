@@ -1,0 +1,387 @@
+/* Correos del sistema de PQRS. Los colores de cada empresa se ponen en línea
+   (encabezado, botón, recuadros); aquí va lo que es igual para todas. */
+
+/* Base */
+
+body,
+body *:not(html):not(style):not(br):not(tr):not(code) {
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    position: relative;
+}
+
+body {
+    -webkit-text-size-adjust: none;
+    background-color: #f3f1ef;
+    color: #3f3f46;
+    height: 100%;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    width: 100% !important;
+}
+
+p,
+ul,
+ol,
+blockquote {
+    line-height: 1.6;
+    text-align: left;
+}
+
+a {
+    color: #1d4ed8;
+}
+
+a img {
+    border: none;
+}
+
+/* Tipografía */
+
+h1 {
+    color: #18181b;
+    font-size: 22px;
+    font-weight: bold;
+    line-height: 1.3;
+    margin-top: 0;
+    margin-bottom: 14px;
+    text-align: left;
+}
+
+h2 {
+    color: #18181b;
+    font-size: 17px;
+    font-weight: bold;
+    margin-top: 0;
+    text-align: left;
+}
+
+h3 {
+    color: #18181b;
+    font-size: 15px;
+    font-weight: bold;
+    margin-top: 0;
+    text-align: left;
+}
+
+p {
+    color: #3f3f46;
+    font-size: 15px;
+    line-height: 1.65;
+    margin-top: 0;
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+p.sub {
+    font-size: 12px;
+}
+
+img {
+    max-width: 100%;
+}
+
+/* Estructura */
+
+.wrapper {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    background-color: #f3f1ef;
+    margin: 0;
+    padding: 32px 12px;
+    width: 100%;
+}
+
+.inner-body {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    background-color: #ffffff;
+    border: 1px solid #e7e5e4;
+    border-radius: 16px;
+    box-shadow: 0 4px 18px rgba(24, 24, 27, 0.06);
+    margin: 0 auto;
+    overflow: hidden;
+    padding: 0;
+    width: 570px;
+}
+
+/* Encabezado con el color de la empresa */
+
+.header-cell {
+    border-radius: 16px 16px 0 0;
+    padding: 26px 36px;
+    text-align: left;
+}
+
+.brand-name {
+    display: block;
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: -0.2px;
+    line-height: 1.25;
+}
+
+.brand-tag {
+    display: block;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1.6px;
+    margin-top: 6px;
+    opacity: 0.8;
+    text-transform: uppercase;
+}
+
+.logo-box {
+    background-color: #ffffff;
+    border-radius: 10px;
+    display: inline-block;
+    padding: 8px 12px;
+}
+
+.logo {
+    border: none;
+    display: block;
+    height: 40px;
+    max-height: 40px;
+    width: auto;
+}
+
+/* Cuerpo */
+
+.content-cell {
+    max-width: 100vw;
+    padding: 34px 36px 30px;
+}
+
+/* Pie */
+
+.footer {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    margin: 0 auto;
+    padding: 0;
+    text-align: center;
+    width: 570px;
+}
+
+.footer-cell {
+    padding: 22px 24px 8px;
+}
+
+.footer p {
+    color: #8a8580;
+    font-size: 12px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.footer a {
+    color: #8a8580;
+    text-decoration: underline;
+}
+
+/* Texto pequeño bajo el contenido (enlace del botón) */
+
+.subcopy {
+    border-top: 1px solid #ece9e6;
+    margin-top: 24px;
+    padding-top: 20px;
+}
+
+.subcopy p {
+    color: #8a8580;
+    font-size: 12px;
+}
+
+/* Botón */
+
+.action {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 26px auto 28px;
+    padding: 0;
+    text-align: center;
+    width: 100%;
+    float: unset;
+}
+
+.button-cell {
+    border-radius: 999px;
+}
+
+.button {
+    -webkit-text-size-adjust: none;
+    border-radius: 999px;
+    border-style: solid;
+    border-width: 12px 28px;
+    box-sizing: border-box;
+    display: inline-block;
+    font-size: 15px;
+    font-weight: bold;
+    overflow: hidden;
+    text-decoration: none;
+}
+
+/* Número de radicado destacado */
+
+.highlight {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    border-radius: 12px;
+    margin: 6px 0 22px;
+    width: 100%;
+}
+
+.highlight-cell {
+    border-radius: 12px;
+    padding: 18px 20px;
+}
+
+.highlight-label {
+    display: block;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+}
+
+.highlight-value {
+    color: #18181b;
+    display: block;
+    font-family: 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace !important;
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+}
+
+/* Tabla de detalles (tipo, asunto, fechas…) */
+
+.details {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    border: 1px solid #ece9e6;
+    border-collapse: separate;
+    border-radius: 12px;
+    margin: 4px 0 22px;
+    width: 100%;
+}
+
+.details td {
+    border-bottom: 1px solid #f1eeeb;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 11px 16px;
+    vertical-align: top;
+}
+
+.details tr:last-child td {
+    border-bottom: none;
+}
+
+.details-label {
+    color: #8a8580;
+    white-space: nowrap;
+    width: 38%;
+}
+
+.details-value {
+    color: #18181b;
+    font-weight: bold;
+}
+
+/* Respuesta del funcionario */
+
+.quote {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    margin: 4px 0 22px;
+    width: 100%;
+}
+
+.quote-cell {
+    background-color: #faf9f7;
+    border-left: 4px solid #a1a1aa;
+    border-radius: 0 12px 12px 0;
+    color: #27272a;
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 18px 20px;
+}
+
+/* Aviso importante (p. ej. riesgo vital) */
+
+.alert {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    margin: 0 0 20px;
+    width: 100%;
+}
+
+.alert-cell {
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    color: #991b1b;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1.5;
+    padding: 14px 18px;
+}
+
+/* Componentes heredados de Laravel */
+
+.panel {
+    border-left: #a1a1aa solid 4px;
+    margin: 21px 0;
+}
+
+.panel-content {
+    background-color: #faf9f7;
+    color: #3f3f46;
+    padding: 16px;
+}
+
+.panel-content p {
+    color: #3f3f46;
+}
+
+.panel-item {
+    padding: 0;
+}
+
+.panel-item p:last-of-type {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.table table {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 24px auto;
+    width: 100%;
+}
+
+.table th {
+    border-bottom: 1px solid #ece9e6;
+    margin: 0;
+    padding-bottom: 8px;
+}
+
+.table td {
+    color: #3f3f46;
+    font-size: 15px;
+    line-height: 18px;
+    margin: 0;
+    padding: 10px 0;
+}
+
+.break-all {
+    word-break: break-all;
+}

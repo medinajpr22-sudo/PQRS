@@ -273,7 +273,7 @@ test('citizens can download response attachments but never internal note attachm
 
         return count($mail->attachments) === 1
             && $mail->attachments[0]['options']['as'] === 'respuesta.pdf'
-            && str_contains((string) $mail->introLines[1], 'Mensaje con un archivo adjunto.')
+            && $mail->viewData['quote'] === 'Mensaje con un archivo adjunto.'
             && str_ends_with($mail->actionUrl, "consultar?radicado={$radicado}");
     });
 });
