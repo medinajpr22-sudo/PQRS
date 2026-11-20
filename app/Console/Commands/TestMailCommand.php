@@ -46,6 +46,7 @@ class TestMailCommand extends Command
         'SmtpClientAuthentication is disabled' => 'Microsoft 365 tiene apagado el envío por SMTP para este buzón. Un administrador de Microsoft 365 debe activar «SMTP autenticado» al buzón (Centro de administración → Usuarios → el usuario → Correo → Administrar aplicaciones de correo).',
         'basic authentication is disabled' => 'Microsoft ya no acepta usuario y contraseña por SMTP para esta cuenta. En una cuenta personal de Outlook.com no se puede volver a activar: hay que enviar con OAuth (Microsoft Graph) o con un servicio de envío de correos.',
         '5.7.30' => 'Microsoft apagó el envío con usuario y contraseña (autenticación básica) para este buzón. En Microsoft 365 el administrador puede reactivarlo por un tiempo; la solución definitiva es enviar con OAuth (Microsoft Graph).',
+        'security defaults' => 'Los «valores predeterminados de seguridad» de Microsoft Entra bloquean el envío por SMTP con contraseña en toda la organización (y no dejan crear contraseñas de aplicación). En vez de apagarlos, envía con Microsoft Graph: ver docs/correo-microsoft-365.md.',
         'credentials were incorrect' => 'Usuario o contraseña incorrectos.',
         'SendAsDenied' => 'Outlook no deja enviar a nombre de otra dirección: MAIL_FROM_ADDRESS debe ser el mismo correo de MAIL_USERNAME.',
         '5.2.252' => 'Outlook no deja enviar a nombre de otra dirección: MAIL_FROM_ADDRESS debe ser el mismo correo de MAIL_USERNAME.',
