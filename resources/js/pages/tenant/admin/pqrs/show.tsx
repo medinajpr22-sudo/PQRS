@@ -330,43 +330,6 @@ export default function PqrsShow({
                             {pqrs.type_label} · {pqrs.subject}
                         </p>
                     </div>
-
-                    <div className="flex flex-col items-start gap-1 lg:items-end">
-                        <NativeSelect
-                            aria-label="Cambiar estado"
-                            value=""
-                            disabled={
-                                saving ||
-                                transitions.length === 0 ||
-                                !canChangeStatus
-                            }
-                            title={
-                                canChangeStatus
-                                    ? undefined
-                                    : 'Solo el responsable o un administrador pueden cambiar el estado.'
-                            }
-                            onChange={(e) => onSelectStatus(e.target.value)}
-                            className="w-56"
-                        >
-                            <option value="" disabled>
-                                Cambiar estado…
-                            </option>
-                            {transitions.map((t) => (
-                                <option key={t.value} value={t.value}>
-                                    {isClosed && t.value === 'en_tramite'
-                                        ? 'Reabrir (En trámite)'
-                                        : t.label}
-                                    {t.requires_reason ? ' · pide motivo' : ''}
-                                </option>
-                            ))}
-                        </NativeSelect>
-                        {!pending && <InputError message={errors.status} />}
-                        {pqrs.status !== 'respondida' && !isClosed && (
-                            <p className="text-xs text-muted-foreground">
-                                Pasa a «Respondida» al enviar una respuesta.
-                            </p>
-                        )}
-                    </div>
                 </div>
 
                 <Dialog
@@ -522,16 +485,6 @@ export default function PqrsShow({
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <CardTitle>Gestionar</CardTitle>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        {mode === 'response' && (
-                                            <WritingHelp
-                                                templates={templates}
-                                                suggested={suggestedTemplate(
-                                                    pqrs.type,
-                                                )}
-                                                onPick={applyTemplate}
-                                                onClosed={focusTemplate}
-                                            />
-                                        )}
                                         <div className="inline-flex rounded-lg bg-muted p-1 text-sm">
                                             {(
                                                 ['response', 'note'] as const
@@ -571,7 +524,59 @@ export default function PqrsShow({
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="space-y-3">
+                                {/* Las dos acciones de todos los días, juntas y a la vista. */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <NativeSelect
+                                        aria-label="Cambiar estado"
+                                        value=""
+                                        disabled={
+                                            saving ||
+                                            transitions.length === 0 ||
+                                            !canChangeStatus
+                                        }
+                                        title={
+                                            canChangeStatus
+                                                ? 'Cambiar el estado de la solicitud'
+                                                : 'Solo el responsable o un administrador pueden cambiar el estado.'
+                                        }
+                                        onChange={(e) =>
+                                            onSelectStatus(e.target.value)
+                                        }
+                                        className="h-8 w-56 font-medium"
+                                    >
+                                        <option value="" disabled>
+                                            Cambiar estado…
+                                        </option>
+                                        {transitions.map((t) => (
+                                            <option
+                                                key={t.value}
+                                                value={t.value}
+                                            >
+                                                {isClosed &&
+                                                t.value === 'en_tramite'
+                                                    ? 'Reabrir (En trámite)'
+                                                    : t.label}
+                                                {t.requires_reason
+                                                    ? ' · pide motivo'
+                                                    : ''}
+                                            </option>
+                                        ))}
+                                    </NativeSelect>
+                                    {mode === 'response' && (
+                                        <WritingHelp
+                                            templates={templates}
+                                            suggested={suggestedTemplate(
+                                                pqrs.type,
+                                            )}
+                                            onPick={applyTemplate}
+                                            onClosed={focusTemplate}
+                                        />
+                                    )}
+                                </div>
+                                {!pending && (
+                                    <InputError message={errors.status} />
+                                )}
                                 <Form
                                     {...PqrsActivityController.store.form(
                                         pqrs.radicado,
