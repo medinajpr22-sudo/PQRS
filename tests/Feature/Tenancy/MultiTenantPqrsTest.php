@@ -10,6 +10,7 @@ use App\Enums\UserRole;
 use App\Mail\MicrosoftGraphTransport;
 use App\Models\Pqrs;
 use App\Models\PqrsAttachment;
+use App\Models\PqrsDeletion;
 use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
@@ -28,6 +29,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
+use OpenSpout\Reader\XLSX\Reader;
 use Symfony\Component\Mime\Email;
 
 /**
@@ -1491,4 +1494,219 @@ test('a filed pqrs reaches the citizen and the team through microsoft 365', func
         ->and($mimes->contains(fn (string $mime) => str_contains($mime, 'To: admin@graph.test')))->toBeTrue();
 
     MicrosoftGraphTransport::forgetTokens();
+});
+
+/**
+ * Lee un Excel descargado: sus filas (como texto) y el XML de la hoja.
+ *
+ * @return array{rows: list<list<string>>, xml: string}
+ */
+function readXlsx(string $content): array
+{
+    $path = tempnam(sys_get_temp_dir(), 'pqrs').'.xlsx';
+    file_put_contents($path, $content);
+
+    $reader = new Reader;
+    $reader->open($path);
+    $rows = [];
+
+    foreach ($reader->getSheetIterator() as $sheet) {
+        foreach ($sheet->getRowIterator() as $row) {
+            $rows[] = array_map(fn ($v) => $v instanceof DateTimeInterface ? $v->format('Y-m-d H:i') : (string) $v, $row->toArray());
+        }
+    }
+
+    $reader->close();
+    $zip = new ZipArchive;
+    $zip->open($path);
+    $xml = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    unlink($path);
+
+    return ['rows' => $rows, 'xml' => $xml];
+}
+
+test('a company admin downloads the filtered pqrs list in excel', function () {
+    Notification::fake();
+    $tenant = makeCompany('excel');
+    [$norte, $sur] = $tenant->run(fn () => [makeSede('Norte'), makeSede('Sur')]);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'sede_id' => $norte->id,
+        'subject' => '=HYPERLINK("https://malo.example","Clic")',
+    ]))->assertSessionHasNoErrors();
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $sur->id, 'subject' => 'Solicitud del sur']))
+        ->assertSessionHasNoErrors();
+
+    [$admin, $agente] = $tenant->run(fn () => [User::first(), makeStaff('agente', sedes: [$norte])]);
+
+    // Un agente no descarga: el archivo trae datos de todas las sedes.
+    $this->actingAs($agente)->get(portal($tenant, 'admin/pqrs/exportar'))->assertForbidden();
+
+    $response = $this->actingAs($admin)->get(portal($tenant, 'admin/pqrs/exportar?sede='.$norte->id.'&from='.now()->format('Y-m-d')));
+    $response->assertOk()->assertDownload();
+    ['rows' => $rows, 'xml' => $xml] = readXlsx($response->streamedContent());
+    $header = $rows[0];
+    $row = array_combine($header, $rows[1]);
+
+    expect($rows)->toHaveCount(2)
+        ->and($header)->toContain('Radicado', 'Sede', 'Cumplimiento', 'Paciente', 'EPS')->not->toContain('Empresa')
+        ->and($row['Sede'])->toBe('Norte')
+        ->and($row['Estado'])->toBe('Radicada')
+        ->and($row['Cumplimiento'])->toBe('En plazo')
+        ->and($row['Asunto'])->toBe('=HYPERLINK("https://malo.example","Clic")')
+        // Lo que escribe el ciudadano nunca es una fórmula de Excel.
+        ->and($xml)->not->toContain('<f>');
+
+    // Fechas fuera de rango: el archivo sale solo con el encabezado.
+    $empty = $this->actingAs($admin)->get(portal($tenant, 'admin/pqrs/exportar?to=2000-01-01'));
+    expect(readXlsx($empty->streamedContent())['rows'])->toHaveCount(1);
+});
+
+/**
+ * URL del panel central. Después de visitar el portal de una empresa,
+ * route() arma las direcciones con el dominio de esa empresa.
+ *
+ * @param  array<string, mixed>  $parameters
+ */
+function central(string $name, array $parameters = []): string
+{
+    return rtrim((string) config('app.url'), '/').route($name, $parameters, false);
+}
+
+/** Super administrador con la contraseña ya confirmada (las rutas de PQRS la piden). */
+function superAdmin(): User
+{
+    $user = User::factory()->create();
+    test()->actingAs($user)->withSession(['auth.password_confirmed_at' => time()]);
+
+    return $user;
+}
+
+test('the super admin sees each company pqrs list with its filters', function () {
+    Notification::fake();
+    $tenant = makeCompany('lista');
+    [$norte, $sur] = $tenant->run(fn () => [makeSede('Norte'), makeSede('Sur')]);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $norte->id, 'subject' => 'Del norte']));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $sur->id, 'subject' => 'Del sur']));
+    makeCompany('otra');
+    tenancy()->end();
+
+    $this->actingAs(User::factory()->create())->get(central('pqrs.index'))->assertRedirect(central('password.confirm'));
+
+    superAdmin();
+
+    $this->get(central('pqrs.index', ['empresa' => 'lista', 'sede' => (string) $sur->id]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('pqrs/index')
+            ->where('company', 'lista')
+            ->has('companies', 2)
+            ->where('total', 2)
+            ->has('pqrs.data', 1)
+            ->where('pqrs.data.0.subject', 'Del sur')
+            ->has('sedes', 2));
+
+    // Una empresa que no existe muestra la primera de la lista.
+    $this->get(central('pqrs.index', ['empresa' => 'no-existe']))
+        ->assertInertia(fn (Assert $page) => $page->where('company', 'lista'));
+});
+
+test('the super admin downloads one company or all of them in excel', function () {
+    Notification::fake();
+    $uno = makeCompany('uno');
+    $dos = makeCompany('dos');
+    $this->post(portal($uno, 'radicar'), validSubmission(['subject' => 'Solicitud de uno']));
+    $this->post(portal($dos, 'radicar'), validSubmission(['subject' => 'Solicitud de dos']));
+    tenancy()->end();
+    superAdmin();
+
+    $single = readXlsx($this->get(central('pqrs.export', ['empresa' => 'uno']))->assertOk()->streamedContent())['rows'];
+
+    expect($single)->toHaveCount(2)
+        ->and($single[0])->not->toContain('Empresa')
+        ->and(array_combine($single[0], $single[1])['Asunto'])->toBe('Solicitud de uno');
+
+    $all = readXlsx($this->get(central('pqrs.export', ['empresa' => 'todas', 'sede' => '99']))->assertOk()->streamedContent())['rows'];
+    $companies = array_map(fn (array $row) => array_combine($all[0], $row)['Empresa'], array_slice($all, 1));
+
+    // El filtro de sede no aplica a todas las empresas (cada una tiene las suyas).
+    expect($all[0][0])->toBe('Empresa')
+        ->and($companies)->toEqualCanonicalizing(['Empresa uno', 'Empresa dos']);
+});
+
+test('the super admin deletes pqrs with a reason, files included, and it stays on record', function () {
+    Notification::fake();
+    $tenant = makeCompany('borrado');
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'subject' => 'Spam',
+        'attachments' => [UploadedFile::fake()->create('soporte.pdf', 10, 'application/pdf')],
+    ]))->assertSessionHasNoErrors();
+    $this->post(portal($tenant, 'radicar'), validSubmission(['subject' => 'Real']))->assertSessionHasNoErrors();
+
+    [$spam, $real, $files] = $tenant->run(fn () => [
+        Pqrs::where('subject', 'Spam')->sole(),
+        Pqrs::where('subject', 'Real')->sole(),
+        Storage::disk('local')->allFiles('pqrs/'.Pqrs::where('subject', 'Spam')->value('radicado')),
+    ]);
+    expect($files)->toHaveCount(1);
+    tenancy()->end();
+    $admin = superAdmin();
+
+    // Sin motivo, o con «otro» sin detalle, no se elimina nada.
+    $this->delete(central('pqrs.destroy'), ['empresa' => 'borrado', 'ids' => [$spam->id]])->assertSessionHasErrors('reason');
+    $this->delete(central('pqrs.destroy'), ['empresa' => 'borrado', 'ids' => [$spam->id], 'reason' => 'otro'])
+        ->assertSessionHasErrors(['detail' => 'Cuenta brevemente el motivo.']);
+
+    $this->delete(central('pqrs.destroy'), ['empresa' => 'borrado', 'ids' => [$spam->id], 'reason' => 'spam'])
+        ->assertSessionHasNoErrors();
+
+    $tenant->run(function () use ($spam, $real) {
+        expect(Pqrs::find($spam->id))->toBeNull()
+            ->and(Pqrs::find($real->id))->not->toBeNull()
+            ->and(DB::table('pqrs_activities')->where('pqrs_id', $spam->id)->exists())->toBeFalse()
+            ->and(DB::table('pqrs_attachments')->where('pqrs_id', $spam->id)->exists())->toBeFalse()
+            ->and(Storage::disk('local')->allFiles("pqrs/{$spam->radicado}"))->toBe([]);
+    });
+
+    $record = PqrsDeletion::sole();
+
+    expect($record->radicado)->toBe($spam->radicado)
+        ->and($record->tenant_id)->toBe('borrado')
+        ->and($record->reason)->toBe('spam')
+        ->and($record->deleted_by)->toBe($admin->id);
+
+    // El radicado eliminado ya no se encuentra en la consulta pública.
+    $this->get(portal($tenant, 'consultar/'.$spam->radicado))->assertRedirect(portal($tenant, 'consultar'));
+});
+
+test('the browser gets the security headers', function () {
+    $response = $this->get(route('login'))->assertOk();
+
+    expect($response->headers->get('X-Frame-Options'))->toBe('DENY')
+        ->and($response->headers->get('X-Content-Type-Options'))->toBe('nosniff')
+        ->and($response->headers->get('Referrer-Policy'))->toBe('strict-origin-when-cross-origin')
+        ->and($response->headers->get('Content-Security-Policy-Report-Only'))
+        ->toContain("frame-ancestors 'none'")
+        ->toContain("script-src 'self' 'nonce-")
+        ->toContain("object-src 'none'");
+
+    config(['pqrs.security.csp' => 'enforce']);
+
+    expect($this->get(route('login'))->headers->get('Content-Security-Policy'))->toContain("default-src 'self'");
+});
+
+test('old office files that can carry macros are rejected', function () {
+    Notification::fake();
+    $tenant = makeCompany('macros');
+
+    foreach (['acta.doc' => 'application/msword', 'cuadro.xls' => 'application/vnd.ms-excel'] as $name => $mime) {
+        $this->post(portal($tenant, 'radicar'), validSubmission([
+            'attachments' => [UploadedFile::fake()->create($name, 10, $mime)],
+        ]))->assertSessionHasErrors('attachments.0');
+    }
+
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'attachments' => [UploadedFile::fake()->create('acta.docx', 10, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')],
+    ]))->assertSessionHasNoErrors();
 });

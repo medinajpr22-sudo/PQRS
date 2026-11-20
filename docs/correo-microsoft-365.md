@@ -17,22 +17,22 @@ Lo hace un administrador de Microsoft 365 de la empresa, una sola vez
   **buzón compartido**: no necesita licencia. Las respuestas que manden los
   ciudadanos llegan al correo de contacto de cada empresa, no a este buzón.
 - **Una persona con estos roles:**
-  - *Administrador de aplicaciones*, en Microsoft Entra.
-  - *Administrador de Exchange* (grupo *Organization Management*), para el
-    paso 4.
+    - _Administrador de aplicaciones_, en Microsoft Entra.
+    - _Administrador de Exchange_ (grupo _Organization Management_), para el
+      paso 4.
 
 ## 1. Registrar la app en Microsoft Entra
 
 1. Entra a <https://entra.microsoft.com> y busca **Registros de aplicaciones**
    en la barra superior. Luego **Nuevo registro**.
 2. Llena el registro:
-   - **Nombre:** `Plataforma PQRS – envío de correos`.
-   - **Tipos de cuenta:** *Solo cuentas de este directorio organizativo*.
-   - **URI de redirección:** déjala vacía.
+    - **Nombre:** `Plataforma PQRS – envío de correos`.
+    - **Tipos de cuenta:** _Solo cuentas de este directorio organizativo_.
+    - **URI de redirección:** déjala vacía.
 3. Pulsa **Registrar**.
 4. En la página de la app, copia:
-   - **Id. de aplicación (cliente)** → `MICROSOFT_GRAPH_CLIENT_ID`
-   - **Id. de directorio (inquilino)** → `MICROSOFT_GRAPH_TENANT_ID`
+    - **Id. de aplicación (cliente)** → `MICROSOFT_GRAPH_CLIENT_ID`
+    - **Id. de directorio (inquilino)** → `MICROSOFT_GRAPH_TENANT_ID`
 
 ## 2. Crear el secreto
 
@@ -46,7 +46,7 @@ Lo hace un administrador de Microsoft 365 de la empresa, una sola vez
 
 ## 3. No dar permisos en «Permisos de API»
 
-**No** agregues `Mail.Send` en *Permisos de API* de Entra. Ese permiso deja
+**No** agregues `Mail.Send` en _Permisos de API_ de Entra. Ese permiso deja
 a la app enviar correos **como cualquier persona de la empresa**: el
 gerente, contabilidad, todos.
 
@@ -58,7 +58,7 @@ nada.
 ## 4. Permitir enviar solo desde el buzón de PQRS
 
 Primero busca dos datos en Entra. Ve a **Aplicaciones empresariales**, no a
-*Registros de aplicaciones* (muestra otros valores), y busca la app. Copia:
+_Registros de aplicaciones_ (muestra otros valores), y busca la app. Copia:
 
 - **Id. de aplicación**
 - **Id. de objeto**
@@ -112,12 +112,13 @@ Después:
 1. Si usas `php artisan config:cache`, vuelve a correrlo.
 2. Prueba el envío:
 
-   ```bash
-   php artisan pqrs:probar-correo tucorreo@gmail.com
-   ```
+    ```bash
+    php artisan pqrs:probar-correo tucorreo@gmail.com
+    ```
 
-   El comando muestra la configuración (nunca el secreto). Si falla, dice
-   qué hacer.
+    El comando muestra la configuración (nunca el secreto). Si falla, dice
+    qué hacer.
+
 3. Reinicia la cola para que tome la configuración nueva:
    `php artisan queue:restart`, o detén y vuelve a iniciar
    `php artisan queue:work`.
@@ -132,44 +133,44 @@ registros:
 
 - **SPF:** registro TXT en `@` con
   `v=spf1 include:spf.protection.outlook.com -all`.
-  - Microsoft 365 suele crearlo al agregar el dominio.
-  - Si otro servicio también envía por el dominio, se agrega en el mismo
-    registro: solo puede haber uno.
-- **DKIM:** en <https://security.microsoft.com>, ve a *Correo electrónico y
-  colaboración* → *Directivas y reglas* → *Directivas de amenazas* →
-  *Configuración de autenticación de correo* → **DKIM**. Elige el dominio:
-  - Microsoft muestra dos registros CNAME (`selector1` y `selector2`) para
-    crear en el DNS.
-  - Después, activa **Firmar mensajes para este dominio con firmas DKIM**.
+    - Microsoft 365 suele crearlo al agregar el dominio.
+    - Si otro servicio también envía por el dominio, se agrega en el mismo
+      registro: solo puede haber uno.
+- **DKIM:** en <https://security.microsoft.com>, ve a _Correo electrónico y
+  colaboración_ → _Directivas y reglas_ → _Directivas de amenazas_ →
+  _Configuración de autenticación de correo_ → **DKIM**. Elige el dominio:
+    - Microsoft muestra dos registros CNAME (`selector1` y `selector2`) para
+      crear en el DNS.
+    - Después, activa **Firmar mensajes para este dominio con firmas DKIM**.
 - **DMARC:** registro TXT en `_dmarc` con
   `v=DMARC1; p=none; rua=mailto:dmarc@tuempresa.com`.
-  - Pasadas unas semanas sin problemas, se puede subir a `p=quarantine`.
+    - Pasadas unas semanas sin problemas, se puede subir a `p=quarantine`.
 
 ## Mantenimiento
 
 - **Vencimiento del secreto:** cuando vence, los correos dejan de salir. La
   prueba muestra el error `AADSTS7000222`. Antes de esa fecha:
-  1. Crea un secreto nuevo (paso 2).
-  2. Cámbialo en el `.env`.
-  3. Reinicia la cola.
-  4. Borra el secreto viejo en Entra.
+    1. Crea un secreto nuevo (paso 2).
+    2. Cámbialo en el `.env`.
+    3. Reinicia la cola.
+    4. Borra el secreto viejo en Entra.
 - **Límites de Microsoft:** 30 correos por minuto y 10.000 destinatarios al
   día. La plataforma envía máximo 20 por minuto (`PQRS_MAIL_PER_MINUTE`).
   Los demás esperan en la cola.
 - **Adjuntos:** Microsoft Graph acepta correos de hasta 4 MB.
-  - Las respuestas adjuntan archivos de hasta 2 MB en total
-    (`PQRS_MAIL_MAX_ATTACHMENTS_KB`).
-  - Si pesan más, el correo le dice al ciudadano que los descargue al
-    consultar su radicado.
+    - Las respuestas adjuntan archivos de hasta 2 MB en total
+      (`PQRS_MAIL_MAX_ATTACHMENTS_KB`).
+    - Si pesan más, el correo le dice al ciudadano que los descargue al
+      consultar su radicado.
 
 ## Errores comunes
 
-| Error | Qué hacer |
-| --- | --- |
-| `AADSTS7000215` | En `MICROSOFT_GRAPH_CLIENT_SECRET` va el **Valor** del secreto, no su «Id. de secreto». |
-| `AADSTS7000222` | El secreto venció: crea uno nuevo (ver «Mantenimiento»). |
-| `AADSTS700016` | Revisa `MICROSOFT_GRAPH_CLIENT_ID`. |
-| `AADSTS90002` o `AADSTS900023` | Revisa `MICROSOFT_GRAPH_TENANT_ID`. |
-| `ErrorAccessDenied` | Falta el paso 4, el buzón no está en el alcance, o no han pasado las 2 horas. Revísalo con `Test-ServicePrincipalAuthorization`. |
-| `ErrorInvalidUser` o `MailboxNotEnabledForRESTAPI` | El buzón de `MAIL_FROM_ADDRESS` no existe en Microsoft 365 o no tiene Exchange. |
-| `429` o `ApplicationThrottled` | Microsoft frenó los envíos por exceso. La cola los reintenta sola; si pasa seguido, baja `PQRS_MAIL_PER_MINUTE`. |
+| Error                                              | Qué hacer                                                                                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `AADSTS7000215`                                    | En `MICROSOFT_GRAPH_CLIENT_SECRET` va el **Valor** del secreto, no su «Id. de secreto».                                          |
+| `AADSTS7000222`                                    | El secreto venció: crea uno nuevo (ver «Mantenimiento»).                                                                         |
+| `AADSTS700016`                                     | Revisa `MICROSOFT_GRAPH_CLIENT_ID`.                                                                                              |
+| `AADSTS90002` o `AADSTS900023`                     | Revisa `MICROSOFT_GRAPH_TENANT_ID`.                                                                                              |
+| `ErrorAccessDenied`                                | Falta el paso 4, el buzón no está en el alcance, o no han pasado las 2 horas. Revísalo con `Test-ServicePrincipalAuthorization`. |
+| `ErrorInvalidUser` o `MailboxNotEnabledForRESTAPI` | El buzón de `MAIL_FROM_ADDRESS` no existe en Microsoft 365 o no tiene Exchange.                                                  |
+| `429` o `ApplicationThrottled`                     | Microsoft frenó los envíos por exceso. La cola los reintenta sola; si pasa seguido, baja `PQRS_MAIL_PER_MINUTE`.                 |

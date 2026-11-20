@@ -36,10 +36,33 @@ return [
     |--------------------------------------------------------------------------
     | Adjuntos
     |--------------------------------------------------------------------------
+    |
+    | Sin .doc ni .xls: esos formatos viejos de Office pueden traer macros, y
+    | es una de las formas más comunes de meter un virus por un portal que
+    | recibe archivos del público. Laravel revisa el contenido real del
+    | archivo, así que un .doc renombrado a .docx también se rechaza.
+    |
+    | En producción conviene además escanear los adjuntos con un antivirus
+    | (por ejemplo ClamAV en el servidor).
+    |
     */
     'attachments' => [
         'max_kb' => 10240,
-        'mimes' => ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx'],
+        'mimes' => ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'xlsx'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cabeceras de seguridad (App\Http\Middleware\SecurityHeaders)
+    |--------------------------------------------------------------------------
+    |
+    | "csp": "enforce" bloquea lo que no cumpla la política (producción),
+    | "report" solo avisa en la consola del navegador (desarrollo) y "off"
+    | no la envía.
+    |
+    */
+    'security' => [
+        'csp' => env('PQRS_CSP', env('APP_ENV') === 'production' ? 'enforce' : 'report'),
     ],
 
     /*
@@ -77,7 +100,7 @@ return [
         'max_attachments_kb' => (int) env('PQRS_MAIL_MAX_ATTACHMENTS_KB', env('MAIL_MAILER') === 'microsoft-graph' ? 2048 : 10240),
         'per_minute' => (int) env('PQRS_MAIL_PER_MINUTE', 20),
         'per_day' => (int) env('PQRS_MAIL_PER_DAY', 0),
-        'acks_per_address' => (int) env('PQRS_MAIL_ACKS_PER_ADDRESS', 10),
+        'acks_per_address' => (int) env('PQRS_MAIL_ACKS_PER_ADDRESS', 3),
         'check_dns' => (bool) env('PQRS_MAIL_CHECK_DNS', true),
     ],
 

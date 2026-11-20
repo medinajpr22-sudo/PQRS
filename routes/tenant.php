@@ -74,6 +74,9 @@ Route::middleware([
 
             Route::get('/', DashboardController::class)->name('dashboard');
             Route::get('pqrs', [PqrsController::class, 'index'])->name('pqrs.index');
+            Route::get('pqrs/exportar', [PqrsController::class, 'export'])
+                ->middleware('can:export-pqrs')
+                ->name('pqrs.export');
             // Un agente solo entra a las PQRS de sus sedes (PqrsPolicy).
             Route::middleware('can:view,pqrs')->group(function () {
                 Route::get('pqrs/{pqrs}', [PqrsController::class, 'show'])->name('pqrs.show');

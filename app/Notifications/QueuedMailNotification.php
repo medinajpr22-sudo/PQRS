@@ -32,6 +32,12 @@ abstract class QueuedMailNotification extends Notification implements ShouldQueu
     /** Errores del servidor de correo antes de darlo por fallido. */
     public int $maxExceptions = 5;
 
+    /**
+     * Si la PQRS se eliminó (p. ej. un super administrador borró spam) antes
+     * de enviar el correo, el correo se descarta en vez de fallar.
+     */
+    public bool $deleteWhenMissingModels = true;
+
     /** @var list<int> Segundos de espera entre reintentos */
     public array $backoff = [60, 300, 900, 3600];
 

@@ -132,6 +132,28 @@ export type PqrsListItem = {
     risk_label: string | null;
 };
 
+/** Filtros de la lista de PQRS (los mismos para descargar en Excel). */
+export type PqrsFilterValues = {
+    search: string;
+    status: string;
+    type: string;
+    sede: string;
+    assigned: string;
+    overdue: boolean;
+    from: string;
+    to: string;
+};
+
+/** PQRS eliminada por un super administrador (registro). */
+export type PqrsDeletionItem = {
+    id: number;
+    radicado: string;
+    reason: string;
+    detail: string | null;
+    deleted_by: string;
+    deleted_at: string;
+};
+
 export type RiskLevel = 'simple' | 'priorizado' | 'vital';
 
 /** Nivel de riesgo de un reclamo en salud (Supersalud). */
@@ -159,6 +181,16 @@ export type StaffUser = {
     sedes: { id: number; name: string }[];
     open_assigned: number;
     last_login_at: string | null;
+    created_at: string;
+    is_me: boolean;
+};
+
+/** Persona con acceso al panel central (todas las empresas). */
+export type SuperAdmin = {
+    id: number;
+    name: string;
+    email: string;
+    two_factor: boolean;
     created_at: string;
     is_me: boolean;
 };

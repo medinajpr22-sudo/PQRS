@@ -93,6 +93,7 @@ test('email verification status is unchanged when the email address is unchanged
 
 test('user can delete their account', function () {
     $user = User::factory()->create();
+    User::factory()->create(); // Queda otro super administrador.
 
     $response = $this
         ->actingAs($user)
@@ -106,6 +107,19 @@ test('user can delete their account', function () {
 
     $this->assertGuest();
     expect($user->fresh())->toBeNull();
+});
+
+test('the only super admin cannot delete their account', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->from(route('profile.edit'))
+        ->delete(route('profile.destroy'), ['password' => 'password'])
+        ->assertSessionHasErrors(['password' => 'Eres el único super administrador: agrega otro antes de eliminar tu cuenta.'])
+        ->assertRedirect(route('profile.edit'));
+
+    $this->assertAuthenticatedAs($user);
+    expect($user->fresh())->not->toBeNull();
 });
 
 test('correct password must be provided to delete account', function () {

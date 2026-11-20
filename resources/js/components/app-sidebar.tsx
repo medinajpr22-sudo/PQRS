@@ -1,5 +1,11 @@
 import { Link } from '@inertiajs/react';
-import { Building2, LayoutGrid, PlusCircle } from 'lucide-react';
+import {
+    Building2,
+    Inbox,
+    LayoutGrid,
+    PlusCircle,
+    ShieldCheck,
+} from 'lucide-react';
 import { NavMain } from '@/components/nav-main';
 import {
     PanelBrand,
@@ -14,6 +20,8 @@ import {
     SidebarHeader,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import pqrs from '@/routes/pqrs';
+import superAdmins from '@/routes/super-admins';
 import tenants from '@/routes/tenants';
 import type { NavItem } from '@/types';
 
@@ -35,6 +43,19 @@ const companyItems: NavItem[] = [
         title: 'Nueva empresa',
         href: tenants.create(),
         icon: PlusCircle,
+    },
+    {
+        title: 'PQRS',
+        href: pqrs.index(),
+        icon: Inbox,
+    },
+];
+
+const platformItems: NavItem[] = [
+    {
+        title: 'Super administradores',
+        href: superAdmins.index(),
+        icon: ShieldCheck,
     },
 ];
 
@@ -59,6 +80,7 @@ export function AppSidebar() {
             <SidebarContent className="gap-2 pt-2">
                 <NavMain items={generalItems} label="General" />
                 <NavMain items={companyItems} label="Empresas" />
+                <NavMain items={platformItems} label="Plataforma" />
             </SidebarContent>
 
             <SidebarFooter className="p-3">

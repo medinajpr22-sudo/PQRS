@@ -75,6 +75,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-users', fn (User $user) => $user->isAdmin());
         Gate::define('manage-sedes', fn (User $user) => $user->isAdmin());
         Gate::define('manage-branding', fn (User $user) => $user->isAdmin());
+        // Descargar PQRS en Excel: trae datos personales y de salud de todas las sedes.
+        Gate::define('export-pqrs', fn (User $user) => $user->isAdmin());
 
         // Un agente solo ve las PQRS de sus sedes.
         Gate::policy(Pqrs::class, PqrsPolicy::class);

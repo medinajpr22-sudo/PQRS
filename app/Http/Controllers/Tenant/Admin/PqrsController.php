@@ -11,14 +11,19 @@ use App\Models\PqrsAttachment;
 use App\Models\Sede;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\PqrsExport;
 use App\Services\PqrsFormRules;
 use App\Services\PqrsService;
+use App\Support\PqrsFilters;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PqrsController extends Controller
 {
@@ -28,41 +33,11 @@ class PqrsController extends Controller
         $tenant = tenant();
         $types = collect($tenant->resolvedFormSchema()['types'])->keyBy('key');
 
-        // Solo textos: un «?status[]=x» en la URL no debe tumbar la página.
-        $text = fn (string $key): string => is_string($value = $request->query($key)) ? $value : '';
-
-        $filters = [
-            'search' => trim($text('search')),
-            'status' => $text('status'),
-            'type' => $text('type'),
-            'overdue' => $request->boolean('overdue'),
-            // "me" = Mis PQRS, "none" = sin responsable, o el id de un usuario
-            'assigned' => is_string($request->query('assigned')) ? $request->query('assigned') : null,
-            // id de una sede, o "none" = sin sede (solo administradores)
-            'sede' => is_string($request->query('sede')) ? $request->query('sede') : null,
-        ];
-
-        $assigned = (string) $filters['assigned'];
-        $sede = (string) $filters['sede'];
+        $filters = PqrsFilters::fromRequest($request);
         $user = $request->user();
 
-        $pqrs = Pqrs::query()
-            ->visibleTo($user)
+        $pqrs = $filters->apply(Pqrs::query()->visibleTo($user), $user)
             ->with(['assignee:id,name', 'sede:id,name'])
-            ->when(ctype_digit($sede), fn ($q) => $q->where('sede_id', (int) $sede))
-            ->when($sede === 'none', fn ($q) => $q->whereNull('sede_id'))
-            ->when($assigned === 'me', fn ($q) => $q->where('assigned_to', $request->user()->id))
-            ->when($assigned === 'none', fn ($q) => $q->whereNull('assigned_to'))
-            ->when(ctype_digit($assigned), fn ($q) => $q->where('assigned_to', (int) $assigned))
-            ->when($filters['search'] !== '', fn ($q) => $q->where(fn ($q) => $q
-                ->whereLike('radicado', "%{$filters['search']}%")
-                ->orWhereLike('requester_name', "%{$filters['search']}%")
-                ->orWhereLike('requester_email', "%{$filters['search']}%")
-                ->orWhereLike('requester_document', "%{$filters['search']}%")
-                ->orWhereLike('subject', "%{$filters['search']}%")))
-            ->when(PqrsStatus::tryFrom((string) $filters['status']), fn ($q, $status) => $q->where('status', $status))
-            ->when($types->has((string) $filters['type']), fn ($q) => $q->where('type', $filters['type']))
-            ->when($filters['overdue'], fn ($q) => $q->overdue())
             ->latest('id')
             ->paginate(15)
             ->withQueryString()
@@ -70,11 +45,12 @@ class PqrsController extends Controller
 
         return Inertia::render('tenant/admin/pqrs/index', [
             'pqrs' => $pqrs,
-            'filters' => $filters,
+            'filters' => $filters->toArray(),
             'statuses' => PqrsStatus::options(),
             'types' => $types->map(fn ($t) => ['value' => $t['key'], 'label' => $t['label']])->values(),
             'staff' => self::staffOptions($user),
             'sedes' => self::sedeFilterOptions($user),
+            'canExport' => $user->can('export-pqrs'),
             // Para las píldoras «Todas · Mis PQRS · Sin responsable».
             'counts' => [
                 'all' => Pqrs::visibleTo($user)->count(),
@@ -82,6 +58,27 @@ class PqrsController extends Controller
                 'none' => Pqrs::visibleTo($user)->whereNull('assigned_to')->count(),
             ],
         ]);
+    }
+
+    /**
+     * La lista filtrada, en Excel (solo administradores de la empresa).
+     */
+    public function export(Request $request, PqrsExport $export): StreamedResponse
+    {
+        /** @var Tenant $tenant */
+        $tenant = tenant();
+        $user = $request->user();
+        $filters = PqrsFilters::fromRequest($request);
+
+        Log::notice('PQRS descargadas en Excel', ['empresa' => $tenant->id, 'usuario' => $user->id, 'filtros' => $filters->toArray()]);
+
+        return $export->download(
+            [$tenant],
+            $filters,
+            'PQRS '.Str::slug($tenant->name).' '.now()->format('Y-m-d').'.xlsx',
+            $user,
+            fn ($query) => $query->visibleTo($user),
+        );
     }
 
     public function show(Request $request, Pqrs $pqrs): Response

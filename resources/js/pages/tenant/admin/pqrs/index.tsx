@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Inbox, Search, X } from 'lucide-react';
+import { Download, Inbox, Search, X } from 'lucide-react';
 import { useState } from 'react';
 import { DueDate } from '@/components/pqrs/due-date';
 import { FilterPills } from '@/components/pqrs/filter-pills';
@@ -17,26 +17,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formatDate } from '@/lib/format';
+import { filtersToQuery, hasActiveFilters } from '@/lib/pqrs-filters';
 import admin from '@/routes/tenant/admin';
-import type { Option, Paginated, PqrsListItem, StaffOption } from '@/types';
-
-type Filters = {
-    search: string;
-    status: string | null;
-    type: string | null;
-    overdue: boolean;
-    assigned: string | null;
-    sede: string | null;
-};
+import type {
+    Option,
+    Paginated,
+    PqrsFilterValues,
+    PqrsListItem,
+    StaffOption,
+} from '@/types';
 
 type Props = {
     pqrs: Paginated<PqrsListItem>;
-    filters: Filters;
+    filters: PqrsFilterValues;
     statuses: Option[];
     types: Option[];
     staff: StaffOption[];
     sedes: Option[];
     counts: { all: number; mine: number; none: number };
+    canExport: boolean;
 };
 
 export default function PqrsIndex({
@@ -47,40 +46,16 @@ export default function PqrsIndex({
     staff,
     sedes,
     counts,
+    canExport,
 }: Props) {
     const isMine = filters.assigned === 'me';
     const [search, setSearch] = useState(filters.search);
 
-    const apply = (next: Partial<Filters>) => {
-        const merged = { ...filters, search, ...next };
-        const query: Record<string, string | number> = {};
-
-        if (merged.search) {
-            query.search = merged.search;
-        }
-
-        if (merged.status) {
-            query.status = merged.status;
-        }
-
-        if (merged.type) {
-            query.type = merged.type;
-        }
-
-        if (merged.overdue) {
-            query.overdue = 1;
-        }
-
-        if (merged.assigned) {
-            query.assigned = merged.assigned;
-        }
-
-        if (merged.sede) {
-            query.sede = merged.sede;
-        }
-
+    const apply = (next: Partial<PqrsFilterValues>) => {
         router.get(
-            admin.pqrs.index.url({ query }),
+            admin.pqrs.index.url({
+                query: filtersToQuery({ ...filters, search, ...next }),
+            }),
             {},
             {
                 preserveState: true,
@@ -90,13 +65,7 @@ export default function PqrsIndex({
         );
     };
 
-    const hasFilters =
-        !!filters.search ||
-        !!filters.status ||
-        !!filters.type ||
-        !!filters.assigned ||
-        !!filters.sede ||
-        filters.overdue;
+    const hasFilters = hasActiveFilters(filters);
 
     return (
         <>
@@ -109,6 +78,24 @@ export default function PqrsIndex({
                         isMine
                             ? 'Solicitudes de las que eres responsable.'
                             : 'Busca, filtra y gestiona las solicitudes radicadas.'
+                    }
+                    actions={
+                        canExport && (
+                            <Button
+                                asChild
+                                className="h-11 rounded-xl px-5 font-bold shadow-md"
+                            >
+                                {/* Descarga lo que se ve: con los mismos filtros. */}
+                                <a
+                                    href={admin.pqrs.export.url({
+                                        query: filtersToQuery(filters),
+                                    })}
+                                >
+                                    <Download />
+                                    Descargar Excel
+                                </a>
+                            </Button>
+                        )
                     }
                 />
 
@@ -128,7 +115,7 @@ export default function PqrsIndex({
                             ? filters.assigned
                             : null
                     }
-                    onChange={(assigned) => apply({ assigned })}
+                    onChange={(assigned) => apply({ assigned: assigned ?? '' })}
                 />
 
                 <Card className="gap-0 py-0">
@@ -153,7 +140,7 @@ export default function PqrsIndex({
                                 aria-label="Estado"
                                 value={filters.status ?? ''}
                                 onChange={(e) =>
-                                    apply({ status: e.target.value || null })
+                                    apply({ status: e.target.value })
                                 }
                                 className="w-40"
                             >
@@ -168,7 +155,7 @@ export default function PqrsIndex({
                                 aria-label="Tipo"
                                 value={filters.type ?? ''}
                                 onChange={(e) =>
-                                    apply({ type: e.target.value || null })
+                                    apply({ type: e.target.value })
                                 }
                                 className="w-40"
                             >
@@ -184,7 +171,7 @@ export default function PqrsIndex({
                                     aria-label="Sede"
                                     value={filters.sede ?? ''}
                                     onChange={(e) =>
-                                        apply({ sede: e.target.value || null })
+                                        apply({ sede: e.target.value })
                                     }
                                     className="w-44"
                                 >
@@ -204,7 +191,7 @@ export default function PqrsIndex({
                                 aria-label="Responsable"
                                 value={filters.assigned ?? ''}
                                 onChange={(e) =>
-                                    apply({ assigned: e.target.value || null })
+                                    apply({ assigned: e.target.value })
                                 }
                                 className="w-44"
                             >
@@ -220,6 +207,29 @@ export default function PqrsIndex({
                                     </option>
                                 ))}
                             </NativeSelect>
+                            <Input
+                                type="date"
+                                aria-label="Radicadas desde"
+                                title="Radicadas desde"
+                                value={filters.from}
+                                max={filters.to || undefined}
+                                onChange={(e) =>
+                                    apply({ from: e.target.value })
+                                }
+                                className="w-38"
+                            />
+                            <span className="text-sm text-muted-foreground">
+                                a
+                            </span>
+                            <Input
+                                type="date"
+                                aria-label="Radicadas hasta"
+                                title="Radicadas hasta"
+                                value={filters.to}
+                                min={filters.from || undefined}
+                                onChange={(e) => apply({ to: e.target.value })}
+                                className="w-38"
+                            />
                             <div className="flex items-center gap-2">
                                 <Checkbox
                                     id="overdue"
