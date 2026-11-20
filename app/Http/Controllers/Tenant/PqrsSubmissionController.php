@@ -90,6 +90,7 @@ class PqrsSubmissionController extends Controller
                 'altcha.required' => 'Marque la casilla «No soy un robot».',
                 'requester_is_affected.required' => 'Indica quién recibió el servicio.',
                 'attended_on.before_or_equal' => 'La fecha de atención no puede ser posterior a hoy.',
+                ...PqrsFormRules::emailMessages(),
             ],
             PqrsFormRules::attributes($schema),
         );

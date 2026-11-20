@@ -49,6 +49,14 @@ return [
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
+        // Microsoft 365 sin contraseña (OAuth). Ver docs/correo-microsoft-365.md.
+        'microsoft-graph' => [
+            'transport' => 'microsoft-graph',
+            'tenant_id' => env('MICROSOFT_GRAPH_TENANT_ID'),
+            'client_id' => env('MICROSOFT_GRAPH_CLIENT_ID'),
+            'client_secret' => env('MICROSOFT_GRAPH_CLIENT_SECRET'),
+        ],
+
         'ses' => [
             'transport' => 'ses',
         ],

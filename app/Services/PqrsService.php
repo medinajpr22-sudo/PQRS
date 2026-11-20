@@ -18,6 +18,7 @@ use Closure;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -96,8 +97,10 @@ class PqrsService
             return $pqrs;
         });
 
-        $this->safely(fn () => Notification::route('mail', $pqrs->requester_email)
-            ->notify(new PqrsReceivedNotification($pqrs, $tenant)));
+        if ($this->mayAcknowledge($pqrs->requester_email)) {
+            $this->safely(fn () => Notification::route('mail', $pqrs->requester_email)
+                ->notify(new PqrsReceivedNotification($pqrs, $tenant)));
+        }
 
         // Avisa al equipo de la sede (ver NotifySedeAgents).
         PqrsArrivedAtSede::dispatch($pqrs, $tenant);
@@ -619,6 +622,21 @@ class PqrsService
     /**
      * Un fallo del correo (o de la cola) nunca debe impedir la radicación ni la respuesta.
      */
+    /**
+     * Tope diario de acuses de recibo por dirección (todas las empresas).
+     *
+     * Un robot que pase el «No soy un robot» podría radicar muchas veces con
+     * el correo de otra persona para llenarle el buzón; si esa persona los
+     * marca como spam, Outlook o Gmail bloquean el buzón que envía. La PQRS
+     * se radica igual y el radicado se ve en pantalla.
+     */
+    protected function mayAcknowledge(string $email): bool
+    {
+        $key = 'pqrs-ack|'.hash('sha256', mb_strtolower(trim($email)));
+
+        return RateLimiter::attempt($key, max(1, (int) config('pqrs.mail.acks_per_address')), fn () => true, 86400) === true;
+    }
+
     protected function safely(Closure $send): void
     {
         try {

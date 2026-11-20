@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Enums\PqrsType;
 use App\Enums\RiskLevel;
 use App\Rules\DocumentNumber;
+use App\Rules\EmailDomainReceivesMail;
+use Closure;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -95,7 +98,7 @@ class PqrsFormRules
         $rules = [
             'type' => ['required', Rule::in($enabledTypes)],
             'requester_name' => ['required', 'string', 'max:150'],
-            'requester_email' => ['required', 'email', 'max:150'],
+            'requester_email' => ['bail', 'required', 'string', 'max:150', ...self::emailRules()],
             'requester_phone' => [$schema['require_phone'] ? 'required' : 'nullable', 'string', 'max:30'],
             'requester_document_type' => [$schema['require_document'] ? 'required' : 'nullable', Rule::in(array_keys(self::DOCUMENT_TYPES))],
             'requester_document' => [$schema['require_document'] ? 'required' : 'nullable', 'string', 'max:30', new DocumentNumber('requester_document_type')],
@@ -125,7 +128,7 @@ class PqrsFormRules
                 'affected_document_type' => [$other, 'required', Rule::in(array_keys(self::PATIENT_DOCUMENT_TYPES))],
                 'affected_document' => [$other, 'required', 'string', 'max:30', new DocumentNumber('affected_document_type')],
                 'affected_phone' => [$other, 'nullable', 'string', 'max:30'],
-                'affected_email' => [$other, 'nullable', 'email', 'max:150'],
+                'affected_email' => [$other, 'bail', 'nullable', 'string', 'max:150', ...self::emailRules()],
                 'eps' => ['nullable', 'string', 'max:120'],
                 'health_regime' => ['nullable', Rule::in(array_keys(self::HEALTH_REGIMES))],
                 'attended_on' => ['nullable', 'date', 'after:2000-01-01', 'before_or_equal:today'],
@@ -150,6 +153,72 @@ class PqrsFormRules
         }
 
         return $rules;
+    }
+
+    /**
+     * Correo del ciudadano: errores de escritura conocidos, formato y que el
+     * dominio reciba correos (ver EmailDomainReceivesMail). Los rebotes le
+     * restan reputación al buzón que envía.
+     *
+     * @return list<mixed>
+     */
+    public static function emailRules(): array
+    {
+        return [
+            self::emailTypoRule(),
+            'email:rfc',
+            ...(config('pqrs.mail.check_dns') ? [new EmailDomainReceivesMail] : []),
+        ];
+    }
+
+    /**
+     * Errores de escritura comunes en los correos más usados. Algunos, como
+     * «gmial.com», existen y reciben correo (son de terceros), así que la
+     * revisión del dominio no los atrapa: el ciudadano nunca recibiría
+     * nada.
+     */
+    private const EMAIL_TYPOS = [
+        'gmial.com' => 'gmail.com', 'gmal.com' => 'gmail.com', 'gamil.com' => 'gmail.com',
+        'gmai.com' => 'gmail.com', 'gmaill.com' => 'gmail.com', 'gnail.com' => 'gmail.com',
+        'gmail.con' => 'gmail.com', 'gmail.cm' => 'gmail.com', 'gmail.om' => 'gmail.com',
+        'hotmal.com' => 'hotmail.com', 'hotmial.com' => 'hotmail.com', 'hotmai.com' => 'hotmail.com',
+        'hotmil.com' => 'hotmail.com', 'hotamil.com' => 'hotmail.com', 'hotmail.con' => 'hotmail.com',
+        'outlok.com' => 'outlook.com', 'outllok.com' => 'outlook.com', 'otlook.com' => 'outlook.com',
+        'outlook.con' => 'outlook.com', 'yaho.com' => 'yahoo.com', 'yahoo.con' => 'yahoo.com',
+    ];
+
+    /**
+     * Sugiere la dirección correcta si el dominio es un error de escritura
+     * conocido.
+     */
+    public static function emailTypoRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if (! is_string($value) || ! str_contains($value, '@')) {
+                return;
+            }
+
+            $domain = mb_strtolower(trim(Str::afterLast($value, '@')));
+
+            if (isset(self::EMAIL_TYPOS[$domain])) {
+                $fail('Revisa el :attribute: ¿quisiste decir «'.mb_strtolower(Str::beforeLast(trim($value), '@')).'@'.self::EMAIL_TYPOS[$domain].'»?');
+            }
+        };
+    }
+
+    /**
+     * Mensajes de error de los correos.
+     *
+     * @return array<string, string>
+     */
+    public static function emailMessages(): array
+    {
+        $message = 'Revisa el :attribute: no parece un correo válido (debe ser como nombre@gmail.com).';
+
+        return [
+            'requester_email.email' => $message,
+            'affected_email.email' => $message,
+        ];
     }
 
     /**

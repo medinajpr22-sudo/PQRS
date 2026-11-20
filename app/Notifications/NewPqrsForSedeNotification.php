@@ -6,35 +6,17 @@ use App\Enums\RiskLevel;
 use App\Models\Pqrs;
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 
 /**
  * Aviso a los agentes de una sede cuando les llega una PQRS nueva o
  * trasladada. Se envía por cola, con reintentos.
  */
-class NewPqrsForSedeNotification extends Notification implements ShouldQueue
+class NewPqrsForSedeNotification extends QueuedMailNotification
 {
-    use Queueable;
-
-    public int $tries = 5;
-
-    /** @var list<int> Segundos de espera entre reintentos */
-    public array $backoff = [60, 300, 900, 3600];
-
     public function __construct(public Pqrs $pqrs, public Tenant $tenant, public ?User $movedBy = null)
     {
         $this->afterCommit();
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function via(object $notifiable): array
-    {
-        return ['mail'];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -43,8 +25,7 @@ class NewPqrsForSedeNotification extends Notification implements ShouldQueue
         $sede = $pqrs->sede?->name;
         $vital = $pqrs->risk_level === RiskLevel::Vital;
 
-        return (new MailMessage)
-            ->from(config('mail.from.address'), $this->tenant->name)
+        return $this->newMessage($this->tenant)
             ->subject(($vital ? '[Riesgo vital] ' : '')
                 ."Nueva PQRS {$pqrs->radicado}".($sede ? " · sede {$sede}" : ''))
             ->greeting('Hola '.($notifiable->name ?? '').',')

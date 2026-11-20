@@ -7,6 +7,7 @@ use AltchaOrg\Altcha\Payload;
 use AltchaOrg\Altcha\SolveChallengeOptions;
 use App\Enums\PqrsStatus;
 use App\Enums\UserRole;
+use App\Mail\MicrosoftGraphTransport;
 use App\Models\Pqrs;
 use App\Models\PqrsAttachment;
 use App\Models\Sede;
@@ -16,13 +17,18 @@ use App\Notifications\NewPqrsForSedeNotification;
 use App\Notifications\PqrsAssignedNotification;
 use App\Notifications\PqrsReceivedNotification;
 use App\Notifications\PqrsRespondedNotification;
+use App\Rules\EmailDomainReceivesMail;
 use App\Services\TenantProvisioner;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\Mime\Email;
 
 /**
  * Crea una empresa de prueba con su propia base de datos.
@@ -91,6 +97,7 @@ function validSubmission(array $overrides = []): array
 
 afterEach(function () {
     tenancy()->end();
+    EmailDomainReceivesMail::resolveUsing(null);
 
     // Borra las bases de datos de prueba de cada empresa y sus archivos
     // (adjuntos y logos), para no dejar basura en storage/.
@@ -1339,9 +1346,18 @@ test('deleting a company removes its database, files and pending emails', functi
     $job = fn (string $id) => ['queue' => 'default', 'payload' => json_encode(['uuid' => $id, 'tenant_id' => $id]), 'attempts' => 0, 'available_at' => time(), 'created_at' => time()];
     DB::table('jobs')->insert([$job('borrar'), $job('otra')]);
 
+    // En PostgreSQL, una conexión abierta a la base (como la de la cola de
+    // correos) no impide borrarla.
+    if (DB::getDriverName() === 'pgsql') {
+        config(['database.connections.abierta' => ['database' => $database] + config('database.connections.pgsql')]);
+        DB::connection('abierta')->select('SELECT 1');
+    }
+
     $this->actingAs(User::factory()->create())
         ->delete(route('tenants.destroy', $tenant), ['confirmation' => 'borrar'])
         ->assertRedirect(route('tenants.index'));
+
+    DB::purge('abierta');
 
     expect(Tenant::find('borrar'))->toBeNull()
         ->and($tenant->database()->manager()->databaseExists($database))->toBeFalse()
@@ -1357,4 +1373,122 @@ test('the seeder never creates the super admin with the known password in produc
     config(['pqrs.super_admin.password' => 'Una-Clave-Segura-2026']);
     app(DatabaseSeeder::class)->run();
     expect(User::where('email', 'admin@pqrs.test')->exists())->toBeTrue();
+});
+
+test('emails go out at the mailbox pace, say they are automatic and replies go to the company', function () {
+    Notification::fake();
+    config(['pqrs.mail.per_minute' => 20, 'pqrs.mail.per_day' => 250]);
+    $tenant = makeCompany('ritmo');
+    $tenant->update(['email' => 'contacto@ritmo.test']);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+
+    Notification::assertSentOnDemand(PqrsReceivedNotification::class, function ($notification, $channels, $notifiable) {
+        $mail = $notification->toMail($notifiable);
+        $email = new Email;
+        foreach ($mail->callbacks as $callback) {
+            $callback($email);
+        }
+
+        expect($mail->from)->toBe([config('mail.from.address'), 'Empresa ritmo'])
+            ->and($mail->replyTo)->toBe([['contacto@ritmo.test', 'Empresa ritmo']])
+            ->and($email->getHeaders()->get('Auto-Submitted')?->getBodyAsString())->toBe('auto-generated')
+            // Los rebotes deben seguir llegando: solo se callan las respuestas automáticas.
+            ->and($email->getHeaders()->get('X-Auto-Response-Suppress')?->getBodyAsString())->toBe('OOF, AutoReply')
+            ->and($notification->middleware($notifiable, 'mail')[0])->toBeInstanceOf(RateLimited::class)
+            // Esperar turno no cuenta como fallo: se rinde después de días, no de 5 intentos.
+            ->and($notification->retryUntil()->getTimestamp())->toBeGreaterThan(now()->addDay()->getTimestamp());
+
+        return true;
+    });
+
+    $limits = collect(RateLimiter::limiter('outgoing-mail')(new stdClass));
+
+    expect($limits->map(fn ($l) => [$l->maxAttempts, $l->decaySeconds])->all())->toBe([[20, 60], [250, 86400]])
+        // Una sola clave para todas las empresas: el buzón que envía es uno.
+        ->and($limits->pluck('key')->all())->toBe(['outgoing-mail-minute', 'outgoing-mail-day']);
+});
+
+test('a citizen address only gets a few acknowledgments a day', function () {
+    Notification::fake();
+    config(['pqrs.mail.acks_per_address' => 2]);
+    $tenant = makeCompany('acuses');
+
+    foreach (range(1, 3) as $i) {
+        $this->post(portal($tenant, 'radicar'), validSubmission(['subject' => "Solicitud {$i}"]))
+            ->assertRedirect(portal($tenant, 'radicado'));
+    }
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(3);
+    Notification::assertSentOnDemandTimes(PqrsReceivedNotification::class, 2);
+});
+
+test('citizen emails with a typo or a domain that does not receive mail are rejected', function () {
+    Notification::fake();
+    config(['pqrs.mail.check_dns' => true]);
+    // DNS de mentiras: solo existen gmail.com y empresa.co.
+    EmailDomainReceivesMail::resolveUsing(fn (string $domain) => in_array($domain, ['gmail.com', 'empresa.co'], true));
+    $tenant = makeCompany('dominio');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_email' => 'ana@gmail.co']))
+        ->assertSessionHasErrors(['requester_email' => 'Revisa el correo electrónico: el dominio «gmail.co» no existe o no recibe correos.']);
+
+    // «gmial.com» lo tiene un tercero y podría recibir correo: se sugiere el correcto.
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_email' => 'Ana.Perez@Gmial.com']))
+        ->assertSessionHasErrors(['requester_email' => 'Revisa el correo electrónico: ¿quisiste decir «ana.perez@gmail.com»?']);
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(0);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_email' => 'pqrs@empresa.co']))
+        ->assertSessionHasNoErrors();
+
+    // Si el DNS del servidor no responde, nadie se queda sin radicar.
+    EmailDomainReceivesMail::resolveUsing(fn () => false);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['requester_email' => 'ana@otro-dominio.co']))
+        ->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::count()))->toBe(2);
+});
+
+test('the mail test command explains why sending failed', function () {
+    $this->artisan('pqrs:probar-correo', ['correo' => 'ana@example.com'])
+        ->expectsOutputToContain('no salió')
+        ->assertSuccessful();
+
+    // Para no salir a internet, el envío va a un puerto local cerrado.
+    config(['mail.default' => 'smtp', 'mail.mailers.smtp.host' => '127.0.0.1', 'mail.mailers.smtp.port' => 1]);
+
+    $this->artisan('pqrs:probar-correo', ['correo' => 'ana@example.com'])
+        ->expectsOutputToContain('No hubo conexión con el servidor')
+        ->assertFailed();
+});
+
+test('a filed pqrs reaches the citizen and the team through microsoft 365', function () {
+    MicrosoftGraphTransport::forgetTokens();
+    config([
+        'mail.default' => 'microsoft-graph',
+        'mail.from.address' => 'pqrs@empresa.test',
+        'mail.mailers.microsoft-graph' => ['transport' => 'microsoft-graph', 'tenant_id' => 'org', 'client_id' => 'app', 'client_secret' => 'secreto'],
+    ]);
+    Http::fake([
+        'login.microsoftonline.com/*' => Http::response(['access_token' => 'permiso', 'expires_in' => 3600]),
+        'graph.microsoft.com/*' => Http::response(null, 202),
+    ]);
+    $tenant = makeCompany('graph');
+    $tenant->update(['email' => 'contacto@graph.test']);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+
+    $mimes = Http::recorded(fn ($request) => str_contains($request->url(), 'graph.microsoft.com'))
+        ->map(fn (array $pair) => (string) base64_decode($pair[0]->body(), true));
+    $citizen = $mimes->first(fn (string $mime) => str_contains($mime, 'To: ciudadano@example.com'));
+
+    expect($citizen)->toBeString()
+        ->toContain('From: Empresa graph <pqrs@empresa.test>')
+        ->toContain('Reply-To: Empresa graph <contacto@graph.test>')
+        ->toContain('Auto-Submitted: auto-generated')
+        // La sede no tiene agentes: el aviso va a los administradores.
+        ->and($mimes->contains(fn (string $mime) => str_contains($mime, 'To: admin@graph.test')))->toBeTrue();
+
+    MicrosoftGraphTransport::forgetTokens();
 });

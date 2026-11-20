@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Mail\MicrosoftGraphTransport;
 use App\Models\Pqrs;
 use App\Models\User;
 use App\Policies\PqrsPolicy;
@@ -12,6 +13,7 @@ use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -36,6 +38,21 @@ class AppServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
         $this->configureGates();
         $this->configureRoutePatterns();
+        $this->configureMail();
+    }
+
+    /**
+     * MAIL_MAILER=microsoft-graph: envío por Microsoft 365 con OAuth.
+     */
+    protected function configureMail(): void
+    {
+        Mail::extend('microsoft-graph', fn (array $config) => new MicrosoftGraphTransport(
+            tenantId: trim((string) ($config['tenant_id'] ?? '')),
+            clientId: trim((string) ($config['client_id'] ?? '')),
+            clientSecret: trim((string) ($config['client_secret'] ?? '')),
+            // Graph envía desde el buzón del remitente.
+            mailbox: trim((string) config('mail.from.address')),
+        ));
     }
 
     /**
@@ -87,6 +104,19 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('tenant-login', fn (Request $request) => Limit::perMinute(5)
             ->by('tenant-login|'.tenant('id').'|'.mb_strtolower((string) $request->input('email')).'|'.$request->ip()));
+
+        // Ritmo del buzón que envía los correos de todas las empresas (ver
+        // config/pqrs.php y QueuedMailNotification). Las claves son globales
+        // a propósito: el buzón es uno solo.
+        RateLimiter::for('outgoing-mail', function (): array {
+            $limits = [Limit::perMinute(max(1, (int) config('pqrs.mail.per_minute')))->by('outgoing-mail-minute')];
+
+            if (($perDay = (int) config('pqrs.mail.per_day')) > 0) {
+                $limits[] = Limit::perDay($perDay)->by('outgoing-mail-day');
+            }
+
+            return $limits;
+        });
     }
 
     /**
