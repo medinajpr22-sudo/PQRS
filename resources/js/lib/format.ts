@@ -28,6 +28,22 @@ export function formatDateTime(value: string | null | undefined): string {
     }).format(new Date(value));
 }
 
+/**
+ * Fecha como se escribe en una carta: «20 de noviembre de 2026».
+ */
+export function formatLetterDate(value: string | null | undefined): string {
+    if (!value) {
+        return '—';
+    }
+
+    return new Intl.DateTimeFormat('es-CO', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: TIME_ZONE,
+    }).format(new Date(value));
+}
+
 export function formatLongDate(value: string | null | undefined): string {
     if (!value) {
         return '—';

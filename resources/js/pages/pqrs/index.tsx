@@ -13,7 +13,7 @@ import {
 import { useState } from 'react';
 import PqrsController from '@/actions/App/Http/Controllers/Central/PqrsController';
 import InputError from '@/components/input-error';
-import { DueDate } from '@/components/pqrs/due-date';
+import { DueDate, DueLight, DueLightLegend } from '@/components/pqrs/due-date';
 import { PageHeader } from '@/components/pqrs/page-header';
 import { Pagination } from '@/components/pqrs/pagination';
 import {
@@ -354,6 +354,8 @@ export default function CentralPqrsIndex({
                             </div>
                         )}
 
+                        <DueLightLegend className="border-b px-4 py-2.5" />
+
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
@@ -444,15 +446,23 @@ export default function CentralPqrsIndex({
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3 whitespace-nowrap">
-                                                    <p className="font-mono text-xs font-semibold">
-                                                        {p.radicado}
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {p.type_label}
-                                                        {' · '}
-                                                        {p.sede?.name ??
-                                                            'Sin sede'}
-                                                    </p>
+                                                    <div className="flex items-start gap-3">
+                                                        <DueLight
+                                                            pqrs={p}
+                                                            className="mt-0.5"
+                                                        />
+                                                        <div>
+                                                            <p className="font-mono text-xs font-semibold">
+                                                                {p.radicado}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {p.type_label}
+                                                                {' · '}
+                                                                {p.sede?.name ??
+                                                                    'Sin sede'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </td>
                                                 <td className="max-w-48 px-4 py-3">
                                                     <p className="truncate font-medium">
@@ -497,6 +507,7 @@ export default function CentralPqrsIndex({
                                                 <td className="px-4 py-3 whitespace-nowrap">
                                                     <DueDate
                                                         dueAt={p.due_at}
+                                                        overdue={p.is_overdue}
                                                         open={
                                                             p.status ===
                                                                 'radicada' ||

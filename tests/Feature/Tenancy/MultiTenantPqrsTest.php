@@ -20,6 +20,7 @@ use App\Notifications\PqrsReceivedNotification;
 use App\Notifications\PqrsRespondedNotification;
 use App\Rules\EmailDomainReceivesMail;
 use App\Services\TenantProvisioner;
+use App\Support\MailBranding;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Queue\Middleware\RateLimited;
@@ -1316,6 +1317,85 @@ test('what the citizen types never becomes a link or image in the emails', funct
         ->not->toContain('src="https://evil.example')
         ->and($tenant->run(fn () => Pqrs::sole()->subject))->not->toContain("\n");
 });
+
+/**
+ * Le pone a la empresa un logo de $bytes bytes (PNG de 1×1 px relleno) en el
+ * disco público central, donde lo deja el super administrador.
+ */
+function giveLogo(Tenant $tenant, string $file = 'logo.png', int $bytes = 0): void
+{
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
+    $relative = "tenants/{$tenant->id}/{$file}";
+
+    File::ensureDirectoryExists(storage_path("app/public/tenants/{$tenant->id}"));
+    File::put(storage_path("app/public/{$relative}"), str_pad($png, max($bytes, strlen($png)), "\0"));
+
+    $tenant->theme = [...($tenant->theme ?? []), 'logo_path' => $relative];
+    $tenant->save();
+}
+
+/**
+ * El correo que recibió $address (del transporte «array» de las pruebas).
+ */
+function sentEmailTo(string $address): Email
+{
+    $sent = collect(app('mailer')->getSymfonyTransport()->messages())
+        ->map(fn ($message) => $message->getOriginalMessage())
+        ->first(fn (Email $email) => strcasecmp($email->getTo()[0]->getAddress(), $address) === 0);
+
+    expect($sent)->toBeInstanceOf(Email::class);
+
+    return $sent;
+}
+
+test('company emails carry the logo inside the message', function () {
+    $tenant = makeCompany('logo-correo');
+    giveLogo($tenant);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+
+    $email = sentEmailTo(validSubmission()['requester_email']);
+    $logo = collect($email->getAttachments())->first(fn ($part) => $part->getName() === MailBranding::LOGO_CID);
+
+    expect($email->getHtmlBody())->toContain('src="cid:'.MailBranding::LOGO_CID.'"')
+        ->and($logo)->not->toBeNull()
+        ->and($logo->getDisposition())->toBe('inline')
+        ->and($logo->getMediaType().'/'.$logo->getMediaSubtype())->toBe('image/png');
+});
+
+test('the mail test command can send a sample with a company design', function () {
+    $tenant = makeCompany('muestra');
+    giveLogo($tenant);
+
+    $this->artisan('pqrs:probar-correo', ['correo' => 'yo@example.com', '--empresa' => 'muestra'])->assertSuccessful();
+
+    $email = sentEmailTo('yo@example.com');
+
+    expect($email->getFrom()[0]->getName())->toBe('Empresa muestra')
+        ->and($email->getHtmlBody())->toContain('src="cid:'.MailBranding::LOGO_CID.'"')
+        ->and($email->getHtmlBody())->toContain('MUE-'.now()->year.'-00000');
+
+    $this->artisan('pqrs:probar-correo', ['correo' => 'yo@example.com', '--empresa' => 'no-existe'])
+        ->expectsOutputToContain('No existe la empresa «no-existe»')
+        ->assertExitCode(2);
+});
+
+test('emails show the company name when the logo cannot travel inside them', function (string $file, int $bytes) {
+    $tenant = makeCompany('sin-logo');
+    giveLogo($tenant, $file, $bytes);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+
+    // En desarrollo el portal no es público: tampoco se enlaza.
+    $email = sentEmailTo(validSubmission()['requester_email']);
+
+    expect($email->getHtmlBody())->not->toContain('cid:')
+        ->toContain('Empresa sin-logo')
+        ->and($email->getAttachments())->toBeEmpty();
+})->with([
+    'webp (Outlook no lo muestra)' => ['logo.webp', 0],
+    'demasiado pesado' => ['logo.png', 400 * 1024],
+]);
 
 test('the dashboard computes the on-time rate in the database', function () {
     $tenant = makeCompany('tasa');

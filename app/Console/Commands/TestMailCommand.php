@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Tenant;
+use App\Notifications\MailPreviewNotification;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -13,10 +16,13 @@ use Throwable;
  * error del servidor.
  *
  *   php artisan pqrs:probar-correo alguien@gmail.com
+ *   php artisan pqrs:probar-correo alguien@gmail.com --empresa=nefrouros   (con el diseño de la empresa)
  */
 class TestMailCommand extends Command
 {
-    protected $signature = 'pqrs:probar-correo {correo : Dirección a la que llegará la prueba}';
+    protected $signature = 'pqrs:probar-correo
+        {correo : Dirección a la que llegará la prueba}
+        {--empresa= : Id de una empresa: envía un correo de ejemplo con su logo y sus colores}';
 
     protected $description = 'Envía un correo de prueba con la configuración del .env y explica el error si falla';
 
@@ -98,11 +104,32 @@ class TestMailCommand extends Command
             $this->components->warn($warning);
         }
 
+        $company = $this->option('empresa');
+        $tenant = null;
+
+        if (is_string($company) && $company !== '') {
+            $tenant = Tenant::query()->find($company);
+
+            if (! $tenant instanceof Tenant) {
+                $this->components->error("No existe la empresa «{$company}». Empresas: ".Tenant::query()->orderBy('id')->pluck('id')->implode(', '));
+
+                return self::INVALID;
+            }
+
+            $this->components->twoColumnDetail('Diseño de la empresa', (string) $tenant->name);
+            $this->newLine();
+        }
+
         try {
-            Mail::raw(
-                'Este es un correo de prueba de la plataforma de PQRS. Si lo recibiste, el envío de correos funciona.',
-                fn ($message) => $message->to($to)->subject('Prueba de correo · '.config('app.name')),
-            );
+            if ($tenant instanceof Tenant) {
+                // Dentro de la empresa, como los correos reales: su logo y sus colores.
+                $tenant->run(fn () => Notification::route('mail', $to)->notifyNow(new MailPreviewNotification($tenant)));
+            } else {
+                Mail::raw(
+                    'Este es un correo de prueba de la plataforma de PQRS. Si lo recibiste, el envío de correos funciona.',
+                    fn ($message) => $message->to($to)->subject('Prueba de correo · '.config('app.name')),
+                );
+            }
         } catch (Throwable $e) {
             $this->components->error('No se pudo enviar el correo.');
             $this->line('  Respuesta del servidor: '.Str::limit(trim($e->getMessage()), 500));

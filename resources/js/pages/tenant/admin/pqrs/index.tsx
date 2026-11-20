@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Download, Inbox, Search, X } from 'lucide-react';
 import { useState } from 'react';
-import { DueDate } from '@/components/pqrs/due-date';
+import { DueDate, DueLight, DueLightLegend } from '@/components/pqrs/due-date';
 import { FilterPills } from '@/components/pqrs/filter-pills';
 import { PageHeader } from '@/components/pqrs/page-header';
 import { Pagination } from '@/components/pqrs/pagination';
@@ -256,6 +256,8 @@ export default function PqrsIndex({
                         </div>
                     </div>
 
+                    <DueLightLegend className="border-b px-4 py-2.5" />
+
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
@@ -313,22 +315,31 @@ export default function PqrsIndex({
                                         }
                                     >
                                         <td className="px-4 py-3 whitespace-nowrap">
-                                            <Link
-                                                href={admin.pqrs.show(
-                                                    p.radicado,
-                                                )}
-                                                className="font-mono text-xs font-semibold hover:underline"
-                                                onClick={(e) =>
-                                                    e.stopPropagation()
-                                                }
-                                            >
-                                                {p.radicado}
-                                            </Link>
-                                            <p className="text-xs text-muted-foreground">
-                                                {p.type_label}
-                                                {' · '}
-                                                {p.sede?.name ?? 'Sin sede'}
-                                            </p>
+                                            <div className="flex items-start gap-3">
+                                                <DueLight
+                                                    pqrs={p}
+                                                    className="mt-0.5"
+                                                />
+                                                <div>
+                                                    <Link
+                                                        href={admin.pqrs.show(
+                                                            p.radicado,
+                                                        )}
+                                                        className="font-mono text-xs font-semibold hover:underline"
+                                                        onClick={(e) =>
+                                                            e.stopPropagation()
+                                                        }
+                                                    >
+                                                        {p.radicado}
+                                                    </Link>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {p.type_label}
+                                                        {' · '}
+                                                        {p.sede?.name ??
+                                                            'Sin sede'}
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td className="max-w-48 px-4 py-3">
                                             <p className="truncate font-medium">
@@ -380,6 +391,7 @@ export default function PqrsIndex({
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             <DueDate
                                                 dueAt={p.due_at}
+                                                overdue={p.is_overdue}
                                                 open={
                                                     p.status === 'radicada' ||
                                                     p.status === 'en_tramite'

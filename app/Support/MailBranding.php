@@ -16,6 +16,23 @@ final class MailBranding
     private const CENTRAL_COLOR = '#5b1a24';
 
     /**
+     * Nombre del logo incrustado: el encabezado lo pide como «cid:logo-empresa»
+     * y el listener EmbedCompanyLogo lo adjunta al correo al enviarlo.
+     */
+    public const LOGO_CID = 'logo-empresa';
+
+    /**
+     * Formatos que se ven en Gmail, Outlook y Apple Mail (webp no se ve en
+     * Outlook de escritorio).
+     *
+     * @var array<string, string>
+     */
+    private const EMBEDDABLE = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif'];
+
+    /** Un logo más pesado viaja en cada correo: mejor enlazarlo. */
+    private const MAX_EMBED_BYTES = 300 * 1024;
+
+    /**
      * @return array{name: string, color: string, on_color: string, ink: string, soft: string, border: string, url: string, logo: string|null}
      */
     public static function current(): array
@@ -27,10 +44,47 @@ final class MailBranding
             $url = $tenant->portalUrl() ?? (string) config('app.url');
             $color = self::validHex($theme['primary_color'] ?? null) ?? self::CENTRAL_COLOR;
 
-            return self::build((string) $tenant->name, $color, $url, $theme['logo_url'] ? $url.$theme['logo_url'] : null);
+            // El logo va dentro del correo: así se ve aunque el correo se abra
+            // sin conexión, en Outlook (que bloquea las imágenes de internet)
+            // o en desarrollo. Si no se puede incrustar, se enlaza.
+            $logo = match (true) {
+                self::embeddableLogo($tenant) !== null => 'cid:'.self::LOGO_CID,
+                $theme['logo_url'] !== null && ! self::isLocal($url) => $url.$theme['logo_url'],
+                default => null,
+            };
+
+            return self::build((string) $tenant->name, $color, $url, $logo);
         }
 
         return self::build((string) config('app.name'), self::CENTRAL_COLOR, (string) config('app.url'), null);
+    }
+
+    /**
+     * Archivo del logo de la empresa, si se puede incrustar en el correo.
+     *
+     * Los logos los sube el super administrador al disco público central (el
+     * mismo que sirve /storage/… en el portal). Dentro de una empresa ese
+     * disco apunta a la carpeta de la empresa, así que se busca por el enlace
+     * public/storage.
+     *
+     * @return array{path: string, mime: string}|null
+     */
+    public static function embeddableLogo(Tenant $tenant): ?array
+    {
+        $relative = $tenant->resolvedTheme()['logo_path'] ?? null;
+
+        if (! is_string($relative) || $relative === '' || str_contains($relative, '..')) {
+            return null;
+        }
+
+        $mime = self::EMBEDDABLE[strtolower(pathinfo($relative, PATHINFO_EXTENSION))] ?? null;
+        $path = public_path('storage/'.$relative);
+
+        if ($mime === null || ! is_file($path) || filesize($path) > self::MAX_EMBED_BYTES) {
+            return null;
+        }
+
+        return ['path' => $path, 'mime' => $mime];
     }
 
     /**
@@ -48,9 +102,7 @@ final class MailBranding
             'soft' => self::tint($color, 0.08),
             'border' => self::tint($color, 0.3),
             'url' => $url,
-            // Un logo en localhost no se ve en Gmail ni Outlook (no pueden
-            // descargarlo): en desarrollo se muestra el nombre.
-            'logo' => $logo !== null && ! self::isLocal($url) ? $logo : null,
+            'logo' => $logo,
         ];
     }
 

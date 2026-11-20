@@ -12,11 +12,13 @@ import {
     Phone,
     RefreshCw,
     Send,
+    Sparkles,
     StickyNote,
+    Undo2,
     UserCheck,
     UserRound,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PqrsActivityController from '@/actions/App/Http/Controllers/Tenant/Admin/PqrsActivityController';
 import PqrsController from '@/actions/App/Http/Controllers/Tenant/Admin/PqrsController';
 import InputError from '@/components/input-error';
@@ -26,6 +28,7 @@ import {
     RiskBadge,
     StatusBadge,
 } from '@/components/pqrs/status-badge';
+import { WritingHelp } from '@/components/pqrs/writing-help';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -39,6 +42,8 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDate, formatDateTime, formatFileSize } from '@/lib/format';
+import { responseTemplates, suggestedTemplate } from '@/lib/response-templates';
+import type { ResponseTemplate } from '@/lib/response-templates';
 import { cn } from '@/lib/utils';
 import admin from '@/routes/tenant/admin';
 import type {
@@ -138,7 +143,7 @@ export default function PqrsShow({
     canChangeStatus,
     sedes,
 }: Props) {
-    const { auth, errors } = usePage().props;
+    const { auth, errors, tenant, name: appName } = usePage().props;
     // Si el responsable actual fue desactivado, igual debe aparecer en la lista.
     const staffOptions: StaffOption[] =
         pqrs.assignee && !staff.some((s) => s.value === pqrs.assignee?.id)
@@ -165,6 +170,90 @@ export default function PqrsShow({
     // responder. Se deriva del estado actual para que el formulario cambie
     // apenas se cierra la solicitud, sin recargar la página.
     const mode = isClosed ? 'note' : selectedMode;
+
+    // «Ayuda a redactar»: el mensaje es un campo libre del formulario, así
+    // que la plantilla se escribe directo en él y se puede deshacer.
+    const bodyRef = useRef<HTMLTextAreaElement>(null);
+    const selectAfterPick = useRef<[number, number] | null>(null);
+    const [draft, setDraft] = useState<{
+        title: string;
+        previous: string;
+        placeholders: string[];
+    } | null>(null);
+    const templates = useMemo(
+        () =>
+            responseTemplates({
+                requesterName: pqrs.requester_name,
+                radicado: pqrs.radicado,
+                filedAt: pqrs.created_at,
+                type: pqrs.type,
+                typeLabel: pqrs.type_label,
+                subject: pqrs.subject,
+                companyName: tenant?.name ?? appName,
+                agentName: auth.user.name,
+            }),
+        [pqrs, tenant, appName, auth.user.name],
+    );
+
+    // Mientras queden textos [entre corchetes] de la plantilla, el navegador
+    // no deja enviar la respuesta (para no mandarle eso al ciudadano). En
+    // una nota interna no se exige.
+    useEffect(() => {
+        if (bodyRef.current) {
+            syncPlaceholders(
+                bodyRef.current,
+                mode === 'response' ? (draft?.placeholders ?? []) : [],
+            );
+        }
+    }, [mode, draft]);
+
+    const applyTemplate = (template: ResponseTemplate) => {
+        const el = bodyRef.current;
+
+        if (!el) {
+            return;
+        }
+
+        setDraft({
+            title: template.title,
+            previous: el.value,
+            placeholders: template.placeholders,
+        });
+        el.value = template.body;
+
+        // Al cerrarse el menú, el primer texto por completar queda
+        // seleccionado, listo para escribir encima.
+        const first = template.placeholders[0];
+        const start = first ? template.body.indexOf(first) : 0;
+        selectAfterPick.current = [start, first ? start + first.length : 0];
+    };
+
+    const focusTemplate = (): boolean => {
+        const el = bodyRef.current;
+        const range = selectAfterPick.current;
+        selectAfterPick.current = null;
+
+        if (!el || !range) {
+            return false;
+        }
+
+        el.focus();
+        el.setSelectionRange(...range);
+
+        return true;
+    };
+
+    const undoTemplate = () => {
+        const el = bodyRef.current;
+
+        if (el && draft) {
+            el.value = draft.previous;
+            el.setCustomValidity('');
+            el.focus();
+        }
+
+        setDraft(null);
+    };
 
     const changeStatus = (status: string, withReason?: string) => {
         setSaving(true);
@@ -432,9 +521,21 @@ export default function PqrsShow({
                             <CardHeader>
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <CardTitle>Gestionar</CardTitle>
-                                    <div className="inline-flex rounded-lg bg-muted p-1 text-sm">
-                                        {(['response', 'note'] as const).map(
-                                            (m) => (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {mode === 'response' && (
+                                            <WritingHelp
+                                                templates={templates}
+                                                suggested={suggestedTemplate(
+                                                    pqrs.type,
+                                                )}
+                                                onPick={applyTemplate}
+                                                onClosed={focusTemplate}
+                                            />
+                                        )}
+                                        <div className="inline-flex rounded-lg bg-muted p-1 text-sm">
+                                            {(
+                                                ['response', 'note'] as const
+                                            ).map((m) => (
                                                 <button
                                                     key={m}
                                                     type="button"
@@ -465,8 +566,8 @@ export default function PqrsShow({
                                                         ? 'Responder al ciudadano'
                                                         : 'Nota interna'}
                                                 </button>
-                                            ),
-                                        )}
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -478,6 +579,7 @@ export default function PqrsShow({
                                     id="pqrs-reply"
                                     options={{ preserveScroll: true }}
                                     resetOnSuccess
+                                    onSuccess={() => setDraft(null)}
                                     onFinish={() => setConfirmTake(false)}
                                     className="space-y-3"
                                 >
@@ -498,16 +600,53 @@ export default function PqrsShow({
                                                     />
                                                 )}
                                             <Textarea
+                                                ref={bodyRef}
                                                 name="body"
-                                                rows={6}
+                                                rows={draft ? 14 : 6}
                                                 required
                                                 placeholder={
                                                     mode === 'response'
                                                         ? `Cordial saludo, ${pqrs.requester_name}…`
                                                         : 'Escribe una nota visible solo para el equipo…'
                                                 }
+                                                onInput={(e) => {
+                                                    if (
+                                                        mode === 'response' &&
+                                                        draft
+                                                    ) {
+                                                        syncPlaceholders(
+                                                            e.currentTarget,
+                                                            draft.placeholders,
+                                                        );
+                                                    }
+                                                }}
                                                 aria-invalid={!!errors.body}
                                             />
+                                            {mode === 'response' && draft && (
+                                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950/60 dark:text-violet-200">
+                                                    <p className="flex items-center gap-2">
+                                                        <Sparkles className="size-4 shrink-0" />
+                                                        <span>
+                                                            Plantilla «
+                                                            {draft.title}».
+                                                            Completa o borra los
+                                                            textos entre
+                                                            [corchetes] antes de
+                                                            enviar.
+                                                        </span>
+                                                    </p>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={undoTemplate}
+                                                        className="text-violet-800 hover:bg-violet-100 dark:text-violet-200 dark:hover:bg-violet-900"
+                                                    >
+                                                        <Undo2 />
+                                                        Deshacer
+                                                    </Button>
+                                                </div>
+                                            )}
                                             <InputError message={errors.body} />
                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <input
@@ -794,6 +933,7 @@ export default function PqrsShow({
                                         <dd className="text-right">
                                             <DueDate
                                                 dueAt={pqrs.due_at}
+                                                overdue={pqrs.is_overdue}
                                                 open={isOpen}
                                             />
                                         </dd>
@@ -961,6 +1101,20 @@ function HealthCard({
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+/**
+ * Marca el mensaje como incompleto mientras tenga textos de la plantilla
+ * sin llenar; el navegador muestra el aviso al intentar enviar.
+ */
+function syncPlaceholders(el: HTMLTextAreaElement, placeholders: string[]) {
+    const pending = placeholders.find((p) => el.value.includes(p));
+
+    el.setCustomValidity(
+        pending
+            ? `Completa o borra los textos entre [corchetes] de la plantilla. Falta: ${pending}`
+            : '',
     );
 }
 

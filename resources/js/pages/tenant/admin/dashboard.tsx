@@ -8,7 +8,7 @@ import {
     Timer,
 } from 'lucide-react';
 import { BarList } from '@/components/pqrs/charts';
-import { DueDate } from '@/components/pqrs/due-date';
+import { DueDate, DueLight } from '@/components/pqrs/due-date';
 import { PageHeader } from '@/components/pqrs/page-header';
 import { StatCard } from '@/components/pqrs/stat-card';
 import { StatusBadge } from '@/components/pqrs/status-badge';
@@ -144,6 +144,7 @@ export default function TenantDashboard({
                                             href={admin.pqrs.show(p.radicado)}
                                             className="flex items-center gap-4 px-6 py-3 transition-colors hover:bg-muted/40"
                                         >
+                                            <DueLight pqrs={p} />
                                             <div className="min-w-0 flex-1">
                                                 <p className="font-mono text-xs text-muted-foreground">
                                                     {p.radicado} ·{' '}
@@ -163,6 +164,7 @@ export default function TenantDashboard({
                                             />
                                             <DueDate
                                                 dueAt={p.due_at}
+                                                overdue={p.is_overdue}
                                                 open
                                                 className="w-32 text-right text-sm"
                                             />
