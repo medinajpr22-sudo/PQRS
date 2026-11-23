@@ -1,0 +1,16 @@
+# /etc/systemd/system/pqrs-worker.service — envía los correos (cola)
+# systemctl daemon-reload && systemctl enable --now pqrs-worker
+[Unit]
+Description=Portal PQRS - worker de colas
+After=network.target postgresql.service
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/html/app-pqrs
+ExecStart=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+
+[Install]
+WantedBy=multi-user.target

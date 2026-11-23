@@ -49,3 +49,5 @@ yarn-error.log
 # Circe Rounded tiene licencia comercial: no se sube al repositorio
 /resources/fonts/*
 !/resources/fonts/LEEME.md
+# Paquetes de despliegue
+/dist-deploy
