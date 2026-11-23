@@ -5,7 +5,10 @@ import { StatusBadge } from '@/components/pqrs/status-badge';
 import { StatusSteps } from '@/components/pqrs/status-steps';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatDateTime, formatFileSize } from '@/lib/format';
-import { attachment as attachmentRoute } from '@/routes/tenant/tracking';
+import {
+    attachment as attachmentRoute,
+    forget,
+} from '@/routes/tenant/tracking';
 import type { PqrsActivityItem, PqrsStatus } from '@/types';
 
 type Props = {
@@ -23,6 +26,8 @@ type Props = {
         responded_at: string | null;
         activities: PqrsActivityItem[];
     };
+    /** Minutos que dura el acceso a la consulta. */
+    accessMinutes: number;
 };
 
 const ACTIVITY_LABEL: Record<PqrsActivityItem['type'], string> = {
@@ -36,7 +41,7 @@ const ACTIVITY_LABEL: Record<PqrsActivityItem['type'], string> = {
     sede_changed: 'Traslado de sede',
 };
 
-export default function TrackResult({ pqrs }: Props) {
+export default function TrackResult({ pqrs, accessMinutes }: Props) {
     return (
         <>
             <Head title={`Radicado ${pqrs.radicado}`} />
@@ -164,13 +169,24 @@ export default function TrackResult({ pqrs }: Props) {
                     </ol>
                 </PortalCard>
 
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center gap-2">
+                    {/* Cierra el acceso: en un computador compartido, quien
+                        llegue después no puede volver atrás y verla. */}
                     <Button variant="outline" asChild>
-                        <Link href="/consultar">
+                        <Link
+                            href={forget.url(pqrs.radicado)}
+                            method="post"
+                            as="button"
+                        >
                             <Search />
-                            Consultar otra solicitud
+                            Cerrar y consultar otra solicitud
                         </Link>
                     </Button>
+                    <p className="text-center text-xs text-zinc-500">
+                        Si estás en un computador compartido, ciérrala al
+                        terminar. Por seguridad, se cierra sola en{' '}
+                        {accessMinutes} minutos.
+                    </p>
                 </div>
             </div>
         </>

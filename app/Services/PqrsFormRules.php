@@ -6,6 +6,7 @@ use App\Enums\PqrsType;
 use App\Enums\RiskLevel;
 use App\Rules\DocumentNumber;
 use App\Rules\EmailDomainReceivesMail;
+use App\Support\UploadLimits;
 use Closure;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -144,12 +145,8 @@ class PqrsFormRules
         }
 
         if ($schema['allow_attachments']) {
-            $rules['attachments'] = ['nullable', 'array', 'max:'.(int) $schema['max_attachments']];
-            $rules['attachments.*'] = [
-                'file',
-                'max:'.config('pqrs.attachments.max_kb'),
-                'mimes:'.implode(',', config('pqrs.attachments.mimes')),
-            ];
+            // Tamaño por archivo y total: los reales del servidor (UploadLimits).
+            $rules = [...$rules, ...UploadLimits::rules('attachments', (int) $schema['max_attachments'])];
         }
 
         return $rules;

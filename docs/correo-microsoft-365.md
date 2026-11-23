@@ -158,8 +158,9 @@ registros:
   día. La plataforma envía máximo 20 por minuto (`PQRS_MAIL_PER_MINUTE`).
   Los demás esperan en la cola.
 - **Adjuntos:** Microsoft Graph acepta correos de hasta 4 MB.
-    - Las respuestas adjuntan archivos de hasta 2 MB en total
-      (`PQRS_MAIL_MAX_ATTACHMENTS_KB`).
+    - Las respuestas adjuntan archivos de hasta 1,8 MB en total, contando el
+      logo de la empresa (`PQRS_MAIL_MAX_ATTACHMENTS_KB`). Los archivos viajan
+      codificados y ocupan casi el doble.
     - Si pesan más, el correo le dice al ciudadano que los descargue al
       consultar su radicado.
 

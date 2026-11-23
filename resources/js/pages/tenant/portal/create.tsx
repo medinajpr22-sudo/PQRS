@@ -14,6 +14,8 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { formatFileSize } from '@/lib/format';
+import { describeLimits, pickFiles } from '@/lib/upload-limits';
+import type { UploadRules } from '@/lib/upload-limits';
 import type { FormSchema, Option, RiskLevelOption } from '@/types';
 
 type Props = {
@@ -21,7 +23,7 @@ type Props = {
     documentTypes: Option[];
     patientDocumentTypes: Option[];
     healthRegimes: Option[];
-    attachmentRules: { max_kb: number; mimes: string[] };
+    attachmentRules: UploadRules;
     initialType: string | null;
     sedes: { value: number; label: string }[];
     riskLevels: RiskLevelOption[];
@@ -42,6 +44,8 @@ export default function CreatePqrs({
     captcha,
 }: Props) {
     const [files, setFiles] = useState<File[]>([]);
+    // Archivos que no se agregaron (muy pesados, de otro tipo…) y por qué.
+    const [fileProblems, setFileProblems] = useState<string[]>([]);
     const fileInput = useRef<HTMLInputElement>(null);
     const defaultType =
         schema.types.find((t) => t.key === initialType)?.key ??
@@ -50,7 +54,13 @@ export default function CreatePqrs({
     const asksRisk = riskLevels.length > 0 && selectedType === 'reclamo';
     // '1': el solicitante es el afectado; '0': lo radica por otra persona.
     const [isAffected, setIsAffected] = useState<string | null>(null);
-    const today = new Date().toLocaleDateString('en-CA');
+    // El teclado del celular depende del documento: el pasaporte lleva letras.
+    const [requesterDocType, setRequesterDocType] = useState('CC');
+    const [affectedDocType, setAffectedDocType] = useState('CC');
+    // «Hoy» en Colombia (como lo valida el servidor), aunque el navegador esté en otra zona.
+    const today = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'America/Bogota',
+    });
 
     const syncFiles = (next: File[]) => {
         setFiles(next);
@@ -82,22 +92,50 @@ export default function CreatePqrs({
                 {...PqrsSubmissionController.store.form()}
                 className="space-y-5"
                 options={{ preserveScroll: false }}
-                onError={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                onError={(errors) => {
+                    // Lleva al primer campo con error (y lo anuncia el lector
+                    // de pantalla); si el error es general, al aviso de arriba.
+                    const field = Object.keys(errors).some((k) => k !== 'form')
+                        ? document.querySelector<HTMLElement>(
+                              '[aria-invalid="true"]',
+                          )
+                        : null;
+
+                    if (field) {
+                        field.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center',
+                        });
+                        field.focus({ preventScroll: true });
+                    } else {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                }}
             >
                 {({ processing, errors }) => (
                     <>
                         {Object.keys(errors).length > 0 && (
                             <div
                                 key={Object.keys(errors).join()}
+                                role="alert"
                                 className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 motion-safe:animate-in motion-safe:duration-300 motion-safe:fade-in motion-safe:slide-in-from-top-2"
                             >
-                                <p className="font-semibold">
-                                    Revisa la información del formulario
-                                </p>
-                                <p>
-                                    Hay {Object.keys(errors).length} campo(s)
-                                    con errores marcados en rojo.
-                                </p>
+                                {errors.form ? (
+                                    <p className="font-semibold">
+                                        {errors.form}
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="font-semibold">
+                                            Revisa la información del formulario
+                                        </p>
+                                        <p>
+                                            Hay {Object.keys(errors).length}{' '}
+                                            campo(s) con errores marcados en
+                                            rojo.
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -153,9 +191,8 @@ export default function CreatePqrs({
                                         Nivel de riesgo del reclamo
                                     </legend>
                                     <p className="text-sm text-zinc-500">
-                                        Si su caso es de riesgo vital, elija ese
-                                        nivel para que sea atendido con
-                                        prioridad.
+                                        Si tu caso es de riesgo vital, elige ese
+                                        nivel para que se atienda con prioridad.
                                     </p>
                                     <div className="mt-3 grid gap-3 md:grid-cols-3">
                                         {riskLevels.map((level) => (
@@ -261,6 +298,11 @@ export default function CreatePqrs({
                                                 id="requester_document_type"
                                                 name="requester_document_type"
                                                 defaultValue="CC"
+                                                onChange={(e) =>
+                                                    setRequesterDocType(
+                                                        e.target.value,
+                                                    )
+                                                }
                                                 required
                                             >
                                                 {documentTypes.map((d) => (
@@ -286,7 +328,9 @@ export default function CreatePqrs({
                                             <Input
                                                 id="requester_document"
                                                 name="requester_document"
-                                                inputMode="numeric"
+                                                inputMode={documentKeyboard(
+                                                    requesterDocType,
+                                                )}
                                                 required
                                                 aria-invalid={
                                                     !!errors.requester_document
@@ -428,6 +472,11 @@ export default function CreatePqrs({
                                                 name="affected_document_type"
                                                 defaultValue="CC"
                                                 required
+                                                onChange={(e) =>
+                                                    setAffectedDocType(
+                                                        e.target.value,
+                                                    )
+                                                }
                                             >
                                                 {patientDocumentTypes.map(
                                                     (d) => (
@@ -454,7 +503,9 @@ export default function CreatePqrs({
                                             <Input
                                                 id="affected_document"
                                                 name="affected_document"
-                                                inputMode="numeric"
+                                                inputMode={documentKeyboard(
+                                                    affectedDocType,
+                                                )}
                                                 required
                                                 aria-invalid={
                                                     !!errors.affected_document
@@ -702,39 +753,33 @@ export default function CreatePqrs({
                                             accept={attachmentRules.mimes
                                                 .map((m) => `.${m}`)
                                                 .join(',')}
-                                            onChange={(e) =>
-                                                syncFiles(
-                                                    [
-                                                        ...files,
-                                                        ...Array.from(
-                                                            e.target.files ??
-                                                                [],
-                                                        ),
-                                                    ].slice(
-                                                        0,
-                                                        schema.max_attachments,
+                                            onChange={(e) => {
+                                                const picked = pickFiles(
+                                                    files,
+                                                    Array.from(
+                                                        e.target.files ?? [],
                                                     ),
-                                                )
-                                            }
+                                                    attachmentRules,
+                                                    schema.max_attachments,
+                                                );
+                                                setFileProblems(
+                                                    picked.problems,
+                                                );
+                                                syncFiles(picked.files);
+                                            }}
                                         />
                                         <label
                                             htmlFor="attachments"
-                                            className="group flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-zinc-300 px-4 py-6 text-center text-sm transition-colors hover:border-(--brand) hover:bg-(--brand-soft)"
+                                            className="group flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed border-zinc-300 px-4 py-6 text-center text-sm transition-colors hover:border-(--brand) hover:bg-(--brand-soft) [input:focus-visible+&]:border-(--brand) [input:focus-visible+&]:ring-2 [input:focus-visible+&]:ring-(--brand)/40"
                                         >
                                             <Paperclip className="size-5 text-zinc-400 transition-transform duration-300 group-hover:-rotate-12 group-hover:text-(--brand)" />
                                             <span className="font-medium">
                                                 Haz clic para adjuntar archivos
                                             </span>
                                             <span className="text-xs text-zinc-500">
-                                                {attachmentRules.mimes
-                                                    .join(', ')
-                                                    .toUpperCase()}{' '}
-                                                · hasta{' '}
-                                                {Math.round(
-                                                    attachmentRules.max_kb /
-                                                        1024,
-                                                )}{' '}
-                                                MB cada uno
+                                                {describeLimits(
+                                                    attachmentRules,
+                                                )}
                                             </span>
                                         </label>
                                         {files.length > 0 && (
@@ -755,7 +800,10 @@ export default function CreatePqrs({
                                                         </span>
                                                         <button
                                                             type="button"
-                                                            onClick={() =>
+                                                            onClick={() => {
+                                                                setFileProblems(
+                                                                    [],
+                                                                );
                                                                 syncFiles(
                                                                     files.filter(
                                                                         (
@@ -765,13 +813,25 @@ export default function CreatePqrs({
                                                                             j !==
                                                                             i,
                                                                     ),
-                                                                )
-                                                            }
+                                                                );
+                                                            }}
                                                             className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
                                                             aria-label={`Quitar ${file.name}`}
                                                         >
                                                             <X className="size-4" />
                                                         </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        {fileProblems.length > 0 && (
+                                            <ul
+                                                role="alert"
+                                                className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                                            >
+                                                {fileProblems.map((problem) => (
+                                                    <li key={problem}>
+                                                        {problem}
                                                     </li>
                                                 ))}
                                             </ul>
@@ -896,3 +956,11 @@ CreatePqrs.layout = {
     description:
         'Completa el formulario. Al finalizar recibirás tu número de radicado.',
 };
+
+/**
+ * Teclado del celular para el número de documento: el pasaporte lleva
+ * letras y el NIT un guion antes del dígito de verificación.
+ */
+function documentKeyboard(type: string): 'numeric' | 'text' {
+    return type === 'PA' || type === 'NIT' ? 'text' : 'numeric';
+}

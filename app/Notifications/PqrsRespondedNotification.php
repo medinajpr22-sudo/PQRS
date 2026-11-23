@@ -6,6 +6,8 @@ use App\Models\Pqrs;
 use App\Models\PqrsActivity;
 use App\Models\PqrsAttachment;
 use App\Models\Tenant;
+use App\Support\MailBranding;
+use App\Support\MailText;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Storage;
 
@@ -25,7 +27,7 @@ class PqrsRespondedNotification extends QueuedMailNotification
         $note = null;
         $mail = $this->newMessage($this->tenant, replyToCompany: true)
             ->subject("Respuesta a tu solicitud {$this->pqrs->radicado}")
-            ->greeting("Hola {$this->pqrs->requester_name},")
+            ->greeting('Hola '.MailText::inert($this->pqrs->requester_name).',')
             ->line('Ya tenemos respuesta para tu solicitud. Esto es lo que nuestro equipo te responde:');
 
         $files = $this->activity->attachments()->get();
@@ -33,7 +35,10 @@ class PqrsRespondedNotification extends QueuedMailNotification
         if ($files->isNotEmpty()) {
             $disk = Storage::disk('local');
             // Por encima del tope, los adjuntos se descargan desde la consulta.
-            $fits = $files->sum('size') <= (int) config('pqrs.mail.max_attachments_kb') * 1024
+            // El logo incrustado también viaja en el correo y cuenta.
+            $logo = MailBranding::embeddableLogo($this->tenant);
+            $budget = (int) config('pqrs.mail.max_attachments_kb') * 1024 - ($logo !== null ? (int) filesize($logo['path']) : 0);
+            $fits = $files->sum('size') <= $budget
                 && $files->every(fn (PqrsAttachment $f) => $disk->exists($f->path));
 
             if ($fits) {
@@ -51,7 +56,7 @@ class PqrsRespondedNotification extends QueuedMailNotification
             ->markdown('notifications::email', [
                 'details' => [
                     'Radicado' => $this->pqrs->radicado,
-                    'Asunto' => $this->pqrs->subject,
+                    'Asunto' => MailText::inert($this->pqrs->subject),
                 ],
                 'quote' => (string) $this->activity->body,
                 'quoteNote' => $note,

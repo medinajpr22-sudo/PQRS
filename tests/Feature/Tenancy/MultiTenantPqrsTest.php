@@ -7,6 +7,7 @@ use AltchaOrg\Altcha\Payload;
 use AltchaOrg\Altcha\SolveChallengeOptions;
 use App\Enums\PqrsStatus;
 use App\Enums\UserRole;
+use App\Http\Controllers\Tenant\PqrsTrackingController;
 use App\Mail\MicrosoftGraphTransport;
 use App\Models\Pqrs;
 use App\Models\PqrsAttachment;
@@ -33,6 +34,12 @@ use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use OpenSpout\Reader\XLSX\Reader;
 use Symfony\Component\Mime\Email;
+
+// La administración de empresas y el perfil piden confirmar la contraseña
+// (RequirePassword): estas pruebas parten con la contraseña ya confirmada.
+beforeEach(function () {
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+});
 
 /**
  * Crea una empresa de prueba con su propia base de datos.
@@ -262,6 +269,20 @@ test('a suspended company portal is unavailable', function () {
     $this->get(portal($tenant))->assertStatus(503);
 });
 
+test('suspending a company twice does not reactivate it', function () {
+    $tenant = makeCompany('doble');
+    $url = route('tenants.status.update', $tenant);
+    $this->actingAs(User::factory()->create());
+
+    // Doble clic: dos «suspender» seguidos la dejan suspendida.
+    $this->patch($url, ['status' => 'suspended'])->assertSessionHasNoErrors();
+    $this->patch($url, ['status' => 'suspended'])->assertSessionHasNoErrors();
+    expect($tenant->fresh()->status)->toBe(Tenant::STATUS_SUSPENDED);
+
+    $this->patch($url, ['status' => 'active'])->assertSessionHasNoErrors();
+    expect($tenant->fresh()->isActive())->toBeTrue();
+});
+
 test('citizens can download response attachments but never internal note attachments', function () {
     Notification::fake();
     $tenant = makeCompany('kappa');
@@ -280,11 +301,11 @@ test('citizens can download response attachments but never internal note attachm
 
     $ids = $tenant->run(fn () => PqrsAttachment::pluck('id', 'original_name'));
 
-    $this->withSession(["tracking.{$radicado}" => true])
+    $this->withSession(["tracking.{$radicado}" => now()->getTimestamp()])
         ->get(portal($tenant, "consultar/{$radicado}/adjuntos/{$ids['interno.pdf']}"))
         ->assertNotFound();
 
-    $this->withSession(["tracking.{$radicado}" => true])
+    $this->withSession(["tracking.{$radicado}" => now()->getTimestamp()])
         ->get(portal($tenant, "consultar/{$radicado}/adjuntos/{$ids['respuesta.pdf']}"))
         ->assertOk();
 
@@ -590,6 +611,79 @@ test('an agent can move a pqrs to another sede and loses access to it', function
         ->and($pqrs->activities->firstWhere('type', 'sede_changed')?->is_public)->toBeFalse();
 
     $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$radicado}"))->assertNotFound();
+});
+
+test('an agent cannot take a colleague pqrs by moving it to another sede', function () {
+    Notification::fake();
+    $tenant = makeCompany('traslado');
+
+    [$neiva, $yopal] = $tenant->run(fn () => [makeSede('Neiva'), makeSede('Yopal')]);
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+
+    [$ana, $luis, $radicado] = $tenant->run(fn () => [
+        makeStaff('ana', sedes: [$neiva]),
+        makeStaff('luis', sedes: [$neiva, $yopal]),
+        Pqrs::sole()->radicado,
+    ]);
+
+    $this->actingAs($ana)->patch(portal($tenant, "admin/pqrs/{$radicado}/asignacion"), ['assigned_to' => $ana->id]);
+
+    // Trasladarla a Yopal (donde Ana no atiende) la dejaría libre para tomarla.
+    $this->actingAs($luis)
+        ->patch(portal($tenant, "admin/pqrs/{$radicado}/sede"), ['sede_id' => $yopal->id])
+        ->assertSessionHasErrors('sede_id');
+
+    expect($tenant->run(fn () => Pqrs::sole()->only(['sede_id', 'assigned_to'])))
+        ->toBe(['sede_id' => $neiva->id, 'assigned_to' => $ana->id]);
+});
+
+test('a note from someone who is not in charge does not change the status', function () {
+    Notification::fake();
+    $tenant = makeCompany('notaajena');
+
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+
+    [$ana, $luis, $radicado] = $tenant->run(fn () => [makeStaff('ana', sedes: [$neiva]), makeStaff('luis', sedes: [$neiva]), Pqrs::sole()->radicado]);
+
+    $this->actingAs($ana)->patch(portal($tenant, "admin/pqrs/{$radicado}/asignacion"), ['assigned_to' => $ana->id]);
+    $this->actingAs($luis)
+        ->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), ['type' => 'note', 'body' => 'Llamé al paciente.'])
+        ->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::sole()->status))->toBe(PqrsStatus::Radicada);
+
+    // La de su responsable sí la pone «En trámite».
+    $this->actingAs($ana)->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), ['type' => 'note', 'body' => 'Revisando la agenda.']);
+
+    expect($tenant->run(fn () => Pqrs::sole()->status))->toBe(PqrsStatus::EnTramite);
+});
+
+test('a colleague can take over a pqrs whose assignee was deactivated', function () {
+    Notification::fake();
+    $tenant = makeCompany('relevo');
+
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+
+    [$ana, $luis, $radicado] = $tenant->run(fn () => [makeStaff('ana', sedes: [$neiva]), makeStaff('luis', sedes: [$neiva]), Pqrs::sole()->radicado]);
+
+    // Ana responde (queda «Respondida» a su cargo) y luego la desactivan.
+    $this->actingAs($ana)
+        ->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), ['type' => 'response', 'take' => '1', 'body' => 'Su cita quedó programada.'])
+        ->assertSessionHasNoErrors();
+    $tenant->run(fn () => User::whereKey($ana->id)->update(['is_active' => false]));
+
+    // Luis ya no queda bloqueado: puede cerrarla o tomarla.
+    $this->actingAs($luis)
+        ->patch(portal($tenant, "admin/pqrs/{$radicado}/estado"), ['status' => 'cerrada'])
+        ->assertSessionHasNoErrors();
+    $this->actingAs($luis)
+        ->patch(portal($tenant, "admin/pqrs/{$radicado}/asignacion"), ['assigned_to' => $luis->id])
+        ->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => Pqrs::sole()->only(['status', 'assigned_to'])))
+        ->toBe(['status' => PqrsStatus::Cerrada, 'assigned_to' => $luis->id]);
 });
 
 test('the company admin assigns sedes and removing one releases the agent pqrs there', function () {
@@ -1285,6 +1379,42 @@ test('public tracking limits guesses and does not reveal which radicados exist',
     expect(session('errors')->first('radicado'))->toContain('Demasiados intentos');
 });
 
+test('tracking access expires and can be closed on a shared computer', function () {
+    Notification::fake();
+    $tenant = makeCompany('kiosco');
+    $this->post(portal($tenant, 'radicar'), validSubmission());
+    $radicado = $tenant->run(fn () => Pqrs::sole()->radicado);
+    $open = fn () => $this->post(portal($tenant, 'consultar'), ['radicado' => $radicado, 'email' => 'ciudadano@example.com']);
+
+    $open()->assertRedirect(portal($tenant, "consultar/{$radicado}"));
+    $this->get(portal($tenant, "consultar/{$radicado}"))->assertOk();
+
+    // «Cerrar consulta»: quien llegue después no puede volver atrás y verla.
+    $this->post(portal($tenant, "consultar/{$radicado}/cerrar"))->assertRedirect(portal($tenant, 'consultar'));
+    $this->get(portal($tenant, "consultar/{$radicado}"))->assertRedirect(portal($tenant, 'consultar'));
+
+    // Y si nadie la cierra, vence sola.
+    $open();
+    $this->travel(PqrsTrackingController::ACCESS_MINUTES + 1)->minutes();
+    $this->get(portal($tenant, "consultar/{$radicado}"))->assertRedirect(portal($tenant, 'consultar'));
+});
+
+test('failed guesses from one connection do not lock the radicado for its owner', function () {
+    Notification::fake();
+    $tenant = makeCompany('bloqueo');
+    $this->post(portal($tenant, 'radicar'), validSubmission());
+    $radicado = $tenant->run(fn () => Pqrs::sole()->radicado);
+
+    foreach (range(1, 8) as $i) {
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.1'])
+            ->post(portal($tenant, 'consultar'), ['radicado' => $radicado, 'email' => "intruso{$i}@example.com"]);
+    }
+
+    $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])
+        ->post(portal($tenant, 'consultar'), ['radicado' => $radicado, 'email' => 'ciudadano@example.com'])
+        ->assertRedirect(portal($tenant, "consultar/{$radicado}"));
+});
+
 test('odd urls answer 404 or show the page instead of failing', function () {
     $tenant = makeCompany('urls');
     $admin = $tenant->run(fn () => User::first());
@@ -1361,6 +1491,90 @@ test('company emails carry the logo inside the message', function () {
         ->and($logo)->not->toBeNull()
         ->and($logo->getDisposition())->toBe('inline')
         ->and($logo->getMediaType().'/'.$logo->getMediaSubtype())->toBe('image/png');
+});
+
+test('citizen text in emails never turns into a link', function () {
+    $tenant = makeCompany('enlaces');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission([
+        'requester_name' => 'Juan. Su afiliación fue suspendida, actualice en eps-pagos.co',
+    ]))->assertSessionHasNoErrors();
+
+    $html = sentEmailTo(validSubmission()['requester_email'])->getHtmlBody();
+
+    // Se lee igual, pero Gmail y Outlook no lo convierten en enlace.
+    expect($html)->not->toContain('eps-pagos.co')
+        ->toContain("eps-pagos.\u{200B}co");
+});
+
+test('queued staff emails are skipped for people who left meanwhile', function () {
+    Notification::fake();
+    $tenant = makeCompany('salieron');
+    $neiva = $tenant->run(fn () => makeSede('Neiva'));
+    $this->post(portal($tenant, 'radicar'), validSubmission(['sede_id' => $neiva->id]));
+
+    $tenant->run(function () use ($tenant, $neiva) {
+        $pqrs = Pqrs::sole();
+        $ana = makeStaff('ana', sedes: [$neiva]);
+        $nuevo = new NewPqrsForSedeNotification($pqrs, $tenant);
+        $asignada = new PqrsAssignedNotification($pqrs, $tenant, User::first());
+
+        expect($nuevo->shouldSend($ana, 'mail'))->toBeTrue();
+
+        // La desactivan (o le quitan la sede) mientras el correo esperaba en la cola.
+        $ana->forceFill(['is_active' => false])->save();
+        expect($nuevo->shouldSend($ana->fresh(), 'mail'))->toBeFalse();
+
+        // El aviso de asignación solo sale si sigue siendo la responsable.
+        $pqrs->forceFill(['assigned_to' => User::first()->id])->save();
+        expect($asignada->shouldSend(User::first(), 'mail'))->toBeTrue()
+            ->and($asignada->shouldSend($ana->fresh(), 'mail'))->toBeFalse();
+    });
+});
+
+test('response attachments that would not fit next to the logo are sent as a download', function () {
+    config(['pqrs.mail.max_attachments_kb' => 300]);
+    $tenant = makeCompany('pesado');
+    giveLogo($tenant, bytes: 200 * 1024);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission())->assertSessionHasNoErrors();
+    [$staff, $radicado] = $tenant->run(fn () => [User::first(), Pqrs::sole()->radicado]);
+
+    // 150 KB caben en 300 KB, pero no junto a un logo de 200 KB.
+    $this->actingAs($staff)->post(portal($tenant, "admin/pqrs/{$radicado}/actividades"), [
+        'type' => 'response',
+        'take' => '1',
+        'body' => 'Adjuntamos el soporte de su cita.',
+        'attachments' => [UploadedFile::fake()->create('soporte.pdf', 150, 'application/pdf')],
+    ])->assertSessionHasNoErrors();
+
+    $response = collect(app('mailer')->getSymfonyTransport()->messages())
+        ->map(fn ($message) => $message->getOriginalMessage())
+        ->first(fn (Email $email) => str_starts_with((string) $email->getSubject(), 'Respuesta a tu solicitud'));
+
+    expect(collect($response->getAttachments())->map(fn ($part) => $part->getFilename())->all())->not->toContain('soporte.pdf')
+        ->and($response->getHtmlBody())->toContain('puedes descargarlos al consultar tu radicado');
+});
+
+test('attachments have a size limit per file and for the whole submission', function () {
+    config(['pqrs.attachments.max_kb' => 100, 'pqrs.attachments.max_total_kb' => 150]);
+    Notification::fake();
+    $tenant = makeCompany('limites');
+    $pdf = fn (string $name, int $kb) => UploadedFile::fake()->create($name, $kb, 'application/pdf');
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['attachments' => [$pdf('grande.pdf', 120)]]))
+        ->assertSessionHasErrors(['attachments.0' => 'Cada archivo puede pesar máximo 100 KB. Reduce su tamaño (por ejemplo, guardándolo como PDF comprimido) e inténtalo de nuevo.']);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['attachments' => [$pdf('uno.pdf', 90), $pdf('dos.pdf', 90)]]))
+        ->assertSessionHasErrors(['attachments' => 'Los archivos suman 180 KB y el máximo por envío es 150 KB. Quita alguno o redúcelos de tamaño.']);
+
+    $this->post(portal($tenant, 'radicar'), validSubmission(['attachments' => [$pdf('uno.pdf', 90)]]))
+        ->assertSessionHasNoErrors();
+
+    // El formulario muestra los mismos límites (nunca más de lo que acepta PHP).
+    $this->get(portal($tenant, 'radicar'))->assertInertia(fn ($page) => $page
+        ->where('attachmentRules.max_kb', 100)
+        ->where('attachmentRules.max_total_kb', 150));
 });
 
 test('the mail test command can send a sample with a company design', function () {
@@ -1479,8 +1693,9 @@ test('emails go out at the mailbox pace, say they are automatic and replies go t
             // Los rebotes deben seguir llegando: solo se callan las respuestas automáticas.
             ->and($email->getHeaders()->get('X-Auto-Response-Suppress')?->getBodyAsString())->toBe('OOF, AutoReply')
             ->and($notification->middleware($notifiable, 'mail')[0])->toBeInstanceOf(RateLimited::class)
-            // Esperar turno no cuenta como fallo: se rinde después de días, no de 5 intentos.
-            ->and($notification->retryUntil()->getTimestamp())->toBeGreaterThan(now()->addDay()->getTimestamp());
+            // Esperar turno no cuenta como fallo: se rinde después de días, no
+            // de 5 intentos, y aguanta una cola detenida en un puente festivo.
+            ->and($notification->retryUntil()->getTimestamp())->toBeGreaterThan(now()->addDays(4)->getTimestamp());
 
         return true;
     });
@@ -1500,6 +1715,10 @@ test('a citizen address only gets a few acknowledgments a day', function () {
     foreach (range(1, 3) as $i) {
         $this->post(portal($tenant, 'radicar'), validSubmission(['subject' => "Solicitud {$i}"]))
             ->assertRedirect(portal($tenant, 'radicado'));
+
+        // El comprobante no promete un correo que no se envió.
+        $this->get(portal($tenant, 'radicado'))
+            ->assertInertia(fn ($page) => $page->where('receipt.emailed', $i <= 2));
     }
 
     expect($tenant->run(fn () => Pqrs::count()))->toBe(3);
@@ -1672,7 +1891,15 @@ test('the super admin sees each company pqrs list with its filters', function ()
     makeCompany('otra');
     tenancy()->end();
 
-    $this->actingAs(User::factory()->create())->get(central('pqrs.index'))->assertRedirect(central('password.confirm'));
+    // Sin confirmar la contraseña: ni los datos de los pacientes, ni
+    // administrar empresas, ni cambiar el correo del perfil.
+    session()->forget('auth.password_confirmed_at');
+    $this->actingAs(User::factory()->create());
+    $this->get(central('pqrs.index'))->assertRedirect(central('password.confirm'));
+    $this->get(central('tenants.edit', ['tenant' => 'otra']))->assertRedirect(central('password.confirm'));
+    $this->delete(central('tenants.destroy', ['tenant' => 'otra']))->assertRedirect(central('password.confirm'));
+    $this->get(central('profile.edit'))->assertRedirect(central('password.confirm'));
+    expect(Tenant::find('otra'))->not->toBeNull();
 
     superAdmin();
 
@@ -1713,6 +1940,9 @@ test('the super admin downloads one company or all of them in excel', function (
     // El filtro de sede no aplica a todas las empresas (cada una tiene las suyas).
     expect($all[0][0])->toBe('Empresa')
         ->and($companies)->toEqualCanonicalizing(['Empresa uno', 'Empresa dos']);
+
+    // Una empresa que no existe no descarga las PQRS de otra.
+    $this->get(central('pqrs.export', ['empresa' => 'no-existe']))->assertNotFound();
 });
 
 test('the super admin deletes pqrs with a reason, files included, and it stays on record', function () {

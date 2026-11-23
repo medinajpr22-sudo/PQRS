@@ -28,6 +28,12 @@ use Throwable;
 class PqrsService
 {
     /**
+     * ¿El último submit() le envió el acuse por correo al ciudadano? No, si
+     * esa dirección ya recibió el máximo de acuses del día (mayAcknowledge).
+     */
+    public bool $acknowledged = false;
+
+    /**
      * Radica una nueva PQRS desde el portal público.
      *
      * Es "todo o nada": si falla el historial o algún adjunto, no queda una
@@ -97,7 +103,9 @@ class PqrsService
             return $pqrs;
         });
 
-        if ($this->mayAcknowledge($pqrs->requester_email)) {
+        $this->acknowledged = $this->mayAcknowledge($pqrs->requester_email);
+
+        if ($this->acknowledged) {
             $this->safely(fn () => Notification::route('mail', $pqrs->requester_email)
                 ->notify(new PqrsReceivedNotification($pqrs, $tenant)));
         }
@@ -191,8 +199,11 @@ class PqrsService
                 $pqrs->responded_at ??= now();
                 $this->transition($pqrs, PqrsStatus::Respondida, $user);
                 $pqrs->save();
-            } elseif ($pqrs->status === PqrsStatus::Radicada) {
-                // Alguien empezó a trabajarla: queda «En trámite» y se registra en el historial.
+            } elseif ($pqrs->status === PqrsStatus::Radicada && $this->isInCharge($pqrs, $user)) {
+                // Quien la atiende empezó a trabajarla: queda «En trámite» y se
+                // registra en el historial. La nota de un compañero que no es el
+                // responsable no le cambia el estado (eso solo lo hace él o un
+                // administrador).
                 $this->transition($pqrs, PqrsStatus::EnTramite, $user);
             }
 
@@ -226,7 +237,9 @@ class PqrsService
             }
 
             if (! $by->isAdmin()) {
-                $takingFree = $assignee?->id === $by->id && $current === null;
+                // Libre también si su responsable ya no puede atenderla
+                // (desactivado o sin la sede): si no, quedaría trabada.
+                $takingFree = $assignee?->id === $by->id && ! $pqrs->hasAvailableAssignee();
                 $releasingOwn = $assignee === null && $current?->id === $by->id;
 
                 if (! $takingFree && ! $releasingOwn) {
@@ -265,10 +278,12 @@ class PqrsService
     /**
      * Traslada la PQRS a otra sede (p. ej. el paciente se equivocó al radicar).
      *
-     * Lo puede hacer el administrador o cualquier agente que vea la PQRS, hacia
-     * cualquier sede activa de la empresa, aunque él no la tenga asignada (en
-     * ese caso deja de verla). Si el responsable actual no tiene acceso a la
-     * nueva sede, la solicitud queda sin responsable.
+     * Lo puede hacer el administrador, su responsable o, si está libre,
+     * cualquier agente que la vea; hacia cualquier sede activa de la empresa,
+     * aunque él no la tenga asignada (en ese caso deja de verla). Si el
+     * responsable actual no tiene acceso a la nueva sede, queda sin
+     * responsable: por eso un compañero no puede trasladar una solicitud
+     * ajena (sería una forma de quitársela a su responsable).
      */
     public function changeSede(Pqrs $pqrs, Sede $sede, User $by, ?string $reason = null): void
     {
@@ -287,6 +302,8 @@ class PqrsService
             if ($from?->id === $sede->id) {
                 return false;
             }
+
+            $this->ensureInCharge($pqrs, $by, 'sede_id', 'trasladarla de sede');
 
             $body = $from === null
                 ? "Solicitud asignada a la sede «{$sede->name}»."
@@ -412,13 +429,22 @@ class PqrsService
      */
     protected function ensureInCharge(Pqrs $pqrs, User $user, string $field, string $action): void
     {
-        if ($user->isAdmin() || $pqrs->assigned_to === null || $pqrs->assigned_to === $user->id) {
+        if ($this->isInCharge($pqrs, $user)) {
             return;
         }
 
         throw ValidationException::withMessages([
             $field => 'Esta solicitud está a cargo de '.($pqrs->assignee->name ?? 'otra persona').". Solo esa persona o un administrador pueden {$action}.",
         ]);
+    }
+
+    /**
+     * Ver Pqrs::canBeHandledBy(): el responsable, un administrador o, si
+     * nadie la puede estar atendiendo, cualquiera que la vea.
+     */
+    protected function isInCharge(Pqrs $pqrs, User $user): bool
+    {
+        return $pqrs->canBeHandledBy($user);
     }
 
     /**

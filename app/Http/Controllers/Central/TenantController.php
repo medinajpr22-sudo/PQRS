@@ -74,8 +74,11 @@ class TenantController extends Controller
                 ...$this->summary($tenant),
                 'theme' => $tenant->resolvedTheme(),
                 'form_schema' => $tenant->resolvedFormSchema(),
-                'stats' => $tenant->pqrsStats(),
-                'admins' => $tenant->companyAdmins(),
+                // Si la base de la empresa no responde (p. ej. una creación que
+                // falló a medias), la página igual abre: desde aquí se puede
+                // reintentar o eliminar la empresa.
+                'stats' => rescue(fn () => $tenant->pqrsStats(), ['total' => 0, 'open' => 0, 'overdue' => 0, 'this_month' => 0]),
+                'admins' => rescue(fn () => $tenant->companyAdmins(), []),
             ],
             'plans' => Tenant::PLANS,
             'layouts' => TenantDefaults::LAYOUTS,

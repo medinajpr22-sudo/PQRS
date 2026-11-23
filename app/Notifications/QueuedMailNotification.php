@@ -9,7 +9,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Queue\Middleware\RateLimited;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\Mime\Email;
+use Throwable;
 
 /**
  * Base de los correos de la plataforma. Todos salen por cola desde el mismo
@@ -19,8 +22,10 @@ use Symfony\Component\Mime\Email;
  *     AppServiceProvider): Outlook y Gmail bloquean las cuentas que envían
  *     muchos correos seguidos. El correo que se pasa del tope espera su
  *     turno en la cola; no se pierde.
- *   - Se reintentan si el servidor de correo falla (hasta 5 errores, con
- *     esperas crecientes) durante máximo dos días.
+ *   - Se reintentan si el servidor de correo falla, con esperas crecientes
+ *     (de 1 minuto a 8 horas): aguantan unas 48 horas de caída del servidor
+ *     de correo (o un secreto de Microsoft vencido un viernes). Si al final
+ *     no sale, queda en el registro (storage/logs) para revisarlo.
  *   - Avisan que son automáticos, para que las respuestas automáticas
  *     («estoy de vacaciones») no lleguen al buzón que envía. Los avisos de
  *     rebote sí llegan: sirven para ver qué correos están mal escritos.
@@ -29,8 +34,15 @@ abstract class QueuedMailNotification extends Notification implements ShouldQueu
 {
     use Queueable;
 
-    /** Errores del servidor de correo antes de darlo por fallido. */
-    public int $maxExceptions = 5;
+    /** Errores del servidor de correo antes de darlo por fallido (ver $backoff). */
+    public int $maxExceptions = 12;
+
+    /**
+     * Segundos que puede tardar un envío antes de que la cola lo corte. Menos
+     * que retry_after (90 s, config/queue.php): si no, otro proceso de la
+     * cola podría tomar el mismo correo y enviarlo dos veces.
+     */
+    public int $timeout = 85;
 
     /**
      * Si la PQRS se eliminó (p. ej. un super administrador borró spam) antes
@@ -38,16 +50,26 @@ abstract class QueuedMailNotification extends Notification implements ShouldQueu
      */
     public bool $deleteWhenMissingModels = true;
 
-    /** @var list<int> Segundos de espera entre reintentos */
-    public array $backoff = [60, 300, 900, 3600];
+    /**
+     * Segundos de espera entre reintentos: 1 y 5 minutos, luego 15 y 30
+     * minutos, 1, 2, 4 y 8 horas (y 8 horas de ahí en adelante).
+     *
+     * @var list<int>
+     */
+    public array $backoff = [60, 300, 900, 1800, 3600, 7200, 14400, 28800];
 
     /**
      * Mientras espera turno por el límite de envío, no cuenta como intento
-     * fallido: solo se rinde pasados dos días.
+     * fallido: solo se rinde pasada una semana desde que se creó.
+     *
+     * El plazo corre aunque la cola esté detenida: con dos días, un correo
+     * del viernes se perdía si la cola volvía a arrancar el lunes (o después
+     * de un puente festivo). Una respuesta tardía sigue siendo útil para el
+     * ciudadano; una que nunca llega, no.
      */
     public function retryUntil(): DateTimeInterface
     {
-        return now()->addDays(2);
+        return now()->addWeek();
     }
 
     /**
@@ -64,6 +86,20 @@ abstract class QueuedMailNotification extends Notification implements ShouldQueu
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    /**
+     * El correo no salió después de todos los reintentos: queda en el
+     * registro con la empresa y el error, para revisarlo (y reenviarlo con
+     * «php artisan queue:retry» cuando se solucione).
+     */
+    public function failed(Throwable $exception): void
+    {
+        Log::error('No se pudo enviar un correo de la plataforma', [
+            'correo' => class_basename(static::class),
+            'empresa' => tenant('id'),
+            'error' => Str::limit($exception->getMessage(), 300),
+        ]);
     }
 
     /**

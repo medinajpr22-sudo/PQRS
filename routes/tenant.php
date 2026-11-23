@@ -55,6 +55,9 @@ Route::middleware([
     Route::get('consultar/{pqrs}', [PqrsTrackingController::class, 'show'])
         ->missing(fn () => to_route('tenant.tracking.create'))
         ->name('tracking.show');
+    Route::post('consultar/{radicado}/cerrar', [PqrsTrackingController::class, 'forget'])
+        ->where('radicado', '[A-Za-z0-9-]{1,40}')
+        ->name('tracking.forget');
     Route::get('consultar/{pqrs}/adjuntos/{attachment}', [PqrsTrackingController::class, 'attachment'])
         ->scopeBindings()
         ->missing(fn () => to_route('tenant.tracking.create'))

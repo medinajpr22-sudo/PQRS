@@ -269,7 +269,7 @@ export default function SuperAdminsIndex({ admins }: Props) {
                             <DialogDescription>
                                 {editing.is_me
                                     ? 'Estos son tus datos de acceso.'
-                                    : 'Si le cambias la contraseña, se cierran sus sesiones abiertas.'}
+                                    : 'Si le cambias la contraseña (por ejemplo, si la olvidó o perdió el celular), se cierran sus sesiones y se le quitan la verificación en dos pasos y las llaves de acceso: las configura de nuevo al entrar.'}
                             </DialogDescription>
                             <Form
                                 key={editing.id}

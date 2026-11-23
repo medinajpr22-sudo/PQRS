@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Central;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\UserSessions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -75,22 +76,36 @@ class SuperAdminController extends Controller
         }
 
         // La contraseña propia se cambia en Ajustes → Seguridad, que pide la
-        // actual. La de otro cierra sus sesiones abiertas.
+        // actual. Cambiar la de otro es recuperar su cuenta (la olvidó, perdió
+        // el celular o alguien más entró): se cierran sus sesiones y se quitan
+        // su verificación en dos pasos y sus llaves de acceso, que deberá
+        // configurar de nuevo. Así no queda una llave puesta por un intruso.
         $newPassword = ! $isMe && filled($data['password'] ?? null) ? (string) $data['password'] : null;
 
         if ($newPassword !== null) {
             $superAdmin->password = $newPassword;
             $superAdmin->setRememberToken(Str::random(60));
+            $superAdmin->forceFill([
+                'two_factor_secret' => null,
+                'two_factor_recovery_codes' => null,
+                'two_factor_confirmed_at' => null,
+            ]);
         }
 
-        $superAdmin->save();
+        DB::transaction(function () use ($superAdmin, $newPassword): void {
+            $superAdmin->save();
+
+            if ($newPassword !== null) {
+                $superAdmin->passkeys()->delete();
+            }
+        });
 
         if ($newPassword !== null) {
-            self::endSessions($superAdmin);
+            UserSessions::end($superAdmin);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $newPassword !== null
-            ? "Datos de {$superAdmin->name} actualizados. Su contraseña cambió y se cerraron sus sesiones."
+            ? "Datos de {$superAdmin->name} actualizados. Su contraseña cambió: se cerraron sus sesiones y deberá configurar de nuevo la verificación en dos pasos y sus llaves de acceso."
             : "Datos de {$superAdmin->name} actualizados."]);
 
         return to_route('super-admins.index');
@@ -121,7 +136,7 @@ class SuperAdminController extends Controller
         });
 
         if ($deleted) {
-            self::endSessions($superAdmin);
+            UserSessions::end($superAdmin);
             DB::table('password_reset_tokens')->where('email', $superAdmin->email)->delete();
 
             Log::notice('Super administrador eliminado', ['id' => $superAdmin->id, 'email' => $superAdmin->email, 'por' => $me->id]);
@@ -150,20 +165,5 @@ class SuperAdminController extends Controller
             'email' => 'correo electrónico',
             'password' => 'contraseña',
         ]);
-    }
-
-    /**
-     * Cierra las sesiones abiertas de esa persona en el panel central.
-     */
-    private static function endSessions(User $user): void
-    {
-        if (config('session.driver') !== 'database') {
-            return;
-        }
-
-        DB::connection(config('session.connection'))
-            ->table((string) config('session.table', 'sessions'))
-            ->where('user_id', $user->getKey())
-            ->delete();
     }
 }

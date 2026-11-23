@@ -6,6 +6,7 @@ use App\Enums\RiskLevel;
 use App\Models\Pqrs;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\MailText;
 use Illuminate\Notifications\Messages\MailMessage;
 
 /**
@@ -17,6 +18,16 @@ class NewPqrsForSedeNotification extends QueuedMailNotification
     public function __construct(public Pqrs $pqrs, public Tenant $tenant, public ?User $movedBy = null)
     {
         $this->afterCommit();
+    }
+
+    /**
+     * El correo pudo esperar en la cola: si mientras tanto desactivaron a la
+     * persona o le quitaron la sede, ya no le llegan los datos del paciente.
+     */
+    public function shouldSend(object $notifiable, string $channel): bool
+    {
+        return ! $notifiable instanceof User
+            || ($notifiable->is_active && $notifiable->canAccessSede($this->pqrs->sede_id));
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -43,9 +54,9 @@ class NewPqrsForSedeNotification extends QueuedMailNotification
                 'details' => [
                     'Tipo' => $this->tenant->pqrsTypeLabel($pqrs->type).($pqrs->risk_level ? ' · '.$pqrs->risk_level->label() : ''),
                     'Sede' => $sede,
-                    'Asunto' => $pqrs->subject,
+                    'Asunto' => MailText::inert($pqrs->subject),
                     'Servicio' => $pqrs->service,
-                    'Solicitante' => $pqrs->requester_name,
+                    'Solicitante' => MailText::inert($pqrs->requester_name),
                     'Paciente' => $pqrs->requester_is_affected === false ? $pqrs->affected_name : null,
                     'Vence' => $pqrs->due_at?->translatedFormat('j \\d\\e F \\d\\e Y'),
                 ],

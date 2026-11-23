@@ -34,6 +34,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Proxies de confianza
+    |--------------------------------------------------------------------------
+    |
+    | Si el servidor está detrás de nginx (como proxy), un balanceador o
+    | Cloudflare: sus IP separadas por coma, o * si al servidor solo se llega
+    | a través del proxy. Sin esto, todos los ciudadanos parecen una sola IP
+    | y comparten los límites de intentos. Vacío = conexión directa.
+    |
+    */
+    'trusted_proxies' => env('TRUSTED_PROXIES', ''),
+
+    /*
+    |--------------------------------------------------------------------------
     | Adjuntos
     |--------------------------------------------------------------------------
     |
@@ -47,7 +60,15 @@ return [
     |
     */
     'attachments' => [
-        'max_kb' => 10240,
+        // Tope por archivo y por envío (todos los archivos juntos), en KB.
+        // Valen para el formulario del ciudadano y para las respuestas del
+        // equipo. El servidor debe permitir al menos eso: en php.ini,
+        // upload_max_filesize ≥ max_kb y post_max_size ≥ max_total_kb + 1 MB
+        // (y en nginx, client_max_body_size). Si PHP permite menos, la app
+        // usa el límite de PHP para no aceptar archivos que se perderían
+        // (ver App\Support\UploadLimits).
+        'max_kb' => (int) env('PQRS_ATTACHMENTS_MAX_KB', 5120),
+        'max_total_kb' => (int) env('PQRS_ATTACHMENTS_MAX_TOTAL_KB', 10240),
         'mimes' => ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'xlsx'],
     ],
 
@@ -94,10 +115,12 @@ return [
     |
     */
     'mail' => [
-        // Adjuntos de la respuesta que caben en el correo; si pesan más, el
-        // ciudadano los descarga al consultar su radicado. Microsoft Graph
-        // acepta correos de hasta 4 MB en total.
-        'max_attachments_kb' => (int) env('PQRS_MAIL_MAX_ATTACHMENTS_KB', env('MAIL_MAILER') === 'microsoft-graph' ? 2048 : 10240),
+        // Adjuntos de la respuesta que caben en el correo, contando el logo
+        // de la empresa; si pesan más, el ciudadano los descarga al consultar
+        // su radicado. Microsoft Graph acepta correos de hasta 4 MB, pero
+        // los archivos viajan codificados dos veces (casi el doble de su
+        // peso): 1,8 MB de archivos ya ocupan unos 3,4 MB.
+        'max_attachments_kb' => (int) env('PQRS_MAIL_MAX_ATTACHMENTS_KB', env('MAIL_MAILER') === 'microsoft-graph' ? 1800 : 10240),
         'per_minute' => (int) env('PQRS_MAIL_PER_MINUTE', 20),
         'per_day' => (int) env('PQRS_MAIL_PER_DAY', 0),
         'acks_per_address' => (int) env('PQRS_MAIL_ACKS_PER_ADDRESS', 3),

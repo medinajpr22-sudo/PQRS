@@ -22,7 +22,7 @@
     {{-- Pie --}}
     <x-slot:footer>
         <x-mail::footer>
-            {{ $brand['name'] }} · Sistema de atención de PQRS. Este es un mensaje automático, por favor no respondas a este correo.
+            {{ $brand['name'] }} · Sistema de atención de PQRS. Este es un mensaje automático de la plataforma de atención de PQRS.
         </x-mail::footer>
     </x-slot:footer>
 </x-mail::layout>

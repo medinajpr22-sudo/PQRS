@@ -2,6 +2,12 @@
 
 use App\Models\User;
 
+// La administración de empresas y el perfil piden confirmar la contraseña
+// (RequirePassword): estas pruebas parten con la contraseña ya confirmada.
+beforeEach(function () {
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+});
+
 test('profile page is displayed', function () {
     $user = User::factory()->create();
 

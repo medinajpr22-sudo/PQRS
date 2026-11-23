@@ -108,7 +108,9 @@ class PqrsController extends Controller
             $filters = $filters->withoutSede();
             $name = 'PQRS todas las empresas';
         } else {
-            $tenant = self::selectedTenant($request, $tenants) ?? abort(404);
+            // Una empresa que no existe (un enlace mal copiado) no descarga
+            // por error las PQRS de otra: responde 404.
+            $tenant = collect($tenants)->first(fn (Tenant $t) => $t->id === $request->query('empresa')) ?? abort(404);
             $selected = [$tenant];
             $name = 'PQRS '.Str::slug($tenant->name);
         }

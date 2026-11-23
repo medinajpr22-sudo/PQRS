@@ -105,7 +105,9 @@ class TenantProvisioner
 
     public static function defaultPrefix(string $name): string
     {
-        $words = collect(preg_split('/\s+/', Str::ascii($name)) ?: [])
+        // Solo letras y números: el prefijo va en el radicado, en direcciones
+        // y en carpetas (p. ej. «E.S.E. Hospital "San Rafael"» → «HSR»).
+        $words = collect(preg_split('/\s+/', (string) preg_replace('/[^A-Za-z0-9\s]/', '', Str::ascii($name))) ?: [])
             ->filter(fn ($w) => strlen($w) > 2)
             ->take(3);
 

@@ -5,16 +5,25 @@ namespace App\Http\Controllers\Central;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class TenantStatusController extends Controller
 {
     /**
      * Activa o suspende el portal de una empresa.
+     *
+     * Se pide el estado final (no «cambiar»): un doble clic, o dos personas a
+     * la vez, no la suspenden y la vuelven a activar sin querer.
      */
-    public function update(Tenant $tenant): RedirectResponse
+    public function update(Request $request, Tenant $tenant): RedirectResponse
     {
-        $tenant->status = $tenant->isActive() ? Tenant::STATUS_SUSPENDED : Tenant::STATUS_ACTIVE;
+        $data = $request->validate([
+            'status' => ['required', Rule::in([Tenant::STATUS_ACTIVE, Tenant::STATUS_SUSPENDED])],
+        ]);
+
+        $tenant->status = $data['status'];
         $tenant->save();
 
         Inertia::flash('toast', [

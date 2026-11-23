@@ -90,11 +90,35 @@ test('changing another super admin password closes their open sessions', functio
     expect($other->fresh()->name)->toBe('Otro Renombrado')
         ->and(DB::table('sessions')->where('user_id', $other->id)->exists())->toBeTrue();
 
+    // Tenía verificación en dos pasos y una llave de acceso (quizá puesta por un intruso).
+    $other->forceFill(['two_factor_secret' => 'secreto', 'two_factor_confirmed_at' => now()])->save();
+    DB::table('passkeys')->insert([
+        'user_id' => $other->id, 'name' => 'Llave', 'credential_id' => 'cred-1', 'credential' => '{}',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
     $this->put(route('super-admins.update', $other), ['name' => 'Otro Renombrado', 'email' => 'otro@empresa.com', 'password' => 'Nueva-Clave-2026'])
         ->assertSessionHasNoErrors();
 
+    // Recuperar la cuenta deja solo la contraseña nueva.
     expect(Hash::check('Nueva-Clave-2026', $other->fresh()->password))->toBeTrue()
-        ->and(DB::table('sessions')->where('user_id', $other->id)->exists())->toBeFalse();
+        ->and(DB::table('sessions')->where('user_id', $other->id)->exists())->toBeFalse()
+        ->and($other->fresh()->two_factor_confirmed_at)->toBeNull()
+        ->and(DB::table('passkeys')->where('user_id', $other->id)->exists())->toBeFalse();
+});
+
+test('changing your own password closes your sessions on other devices', function () {
+    config(['session.driver' => 'database']);
+    $me = asSuperAdmin(User::factory()->create());
+    fakeSession($me);
+
+    $this->put(route('user-password.update'), [
+        'current_password' => 'password',
+        'password' => 'Nueva-Clave-2026',
+        'password_confirmation' => 'Nueva-Clave-2026',
+    ])->assertSessionHasNoErrors();
+
+    expect(DB::table('sessions')->where('id', 'sesion-'.$me->id)->exists())->toBeFalse();
 });
 
 test('your own password is not changed from this page', function () {

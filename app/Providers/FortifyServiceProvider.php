@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Support\TooManyAttempts;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -81,10 +82,15 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($request->session()->get('login.id'));
         });
 
+        // Por correo (adivinar una contraseña) y por conexión (probar muchos
+        // correos con una contraseña común). Si se pasa, aviso en el formulario.
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
 
-            return Limit::perMinute(5)->by($throttleKey);
+            return [
+                Limit::perMinute(5)->by($throttleKey)->response(TooManyAttempts::backTo('email')),
+                Limit::perMinute(20)->by('login-ip|'.$request->ip())->response(TooManyAttempts::backTo('email')),
+            ];
         });
 
         RateLimiter::for('passkeys', function (Request $request) {

@@ -149,4 +149,26 @@ class Pqrs extends Model
     {
         return $this->status->isOpen() && $this->due_at !== null && $this->due_at->isPast();
     }
+
+    /**
+     * ¿Tiene un responsable que todavía puede atenderla? No cuenta uno
+     * desactivado o que ya no tiene acceso a su sede.
+     */
+    public function hasAvailableAssignee(): bool
+    {
+        $assignee = $this->assignee;
+
+        return $assignee !== null && $assignee->is_active && $assignee->canAccessSede($this->sede_id);
+    }
+
+    /**
+     * ¿Puede $user actuar sobre ella (estado, sede, responder)? Sí si es
+     * administrador, si es su responsable o si nadie la puede estar atendiendo.
+     */
+    public function canBeHandledBy(User $user): bool
+    {
+        return $user->isAdmin()
+            || $this->assigned_to === $user->id
+            || ! $this->hasAvailableAssignee();
+    }
 }

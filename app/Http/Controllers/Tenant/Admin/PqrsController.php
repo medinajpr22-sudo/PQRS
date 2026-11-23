@@ -15,6 +15,7 @@ use App\Services\PqrsExport;
 use App\Services\PqrsFormRules;
 use App\Services\PqrsService;
 use App\Support\PqrsFilters;
+use App\Support\UploadLimits;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -126,10 +127,14 @@ class PqrsController extends Controller
             // Solo quienes pueden ver la sede de esta PQRS pueden ser responsables.
             'staff' => self::assignableStaff($pqrs->sede_id),
             'canAssignOthers' => $request->user()->isAdmin(),
-            // Con responsable, solo él o un administrador cambian el estado.
-            'canChangeStatus' => $request->user()->isAdmin()
-                || $pqrs->assigned_to === null
-                || $pqrs->assigned_to === $request->user()->id,
+            // Límites reales para adjuntar a una respuesta o nota.
+            'attachmentRules' => UploadLimits::forFrontend(),
+            'maxFiles' => PqrsActivityController::MAX_FILES,
+            // Con responsable, solo él o un administrador cambian el estado o
+            // la trasladan (salvo que su responsable ya no pueda atenderla).
+            'canChangeStatus' => $pqrs->canBeHandledBy($request->user()),
+            // Un responsable desactivado o sin la sede no bloquea a los demás.
+            'assigneeAvailable' => $pqrs->hasAvailableAssignee(),
             // Cualquier sede activa: si el paciente se equivocó, se traslada.
             'sedes' => Sede::active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Sede $s) => ['value' => $s->id, 'label' => $s->name]),

@@ -6,6 +6,7 @@ use App\Mail\MicrosoftGraphTransport;
 use App\Models\Pqrs;
 use App\Models\User;
 use App\Policies\PqrsPolicy;
+use App\Support\TooManyAttempts;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -89,9 +90,12 @@ class AppServiceProvider extends ServiceProvider
     {
         // Además del «No soy un robot», cada conexión tiene un tope de PQRS
         // por minuto y por hora. Cada límite necesita su propia clave.
+        // Si se pasa, vuelve al formulario con un aviso (no a una página de error).
         RateLimiter::for('pqrs-submit', fn (Request $request) => [
-            Limit::perMinute(5)->by('pqrs-submit-minute|'.tenant('id').'|'.$request->ip()),
-            Limit::perHour(30)->by('pqrs-submit-hour|'.tenant('id').'|'.$request->ip()),
+            Limit::perMinute(5)->by('pqrs-submit-minute|'.tenant('id').'|'.$request->ip())
+                ->response(TooManyAttempts::backTo('form', 'envíos')),
+            Limit::perHour(30)->by('pqrs-submit-hour|'.tenant('id').'|'.$request->ip())
+                ->response(TooManyAttempts::backTo('form', 'envíos')),
         ]);
 
         RateLimiter::for('pqrs-captcha', fn (Request $request) => Limit::perMinute(20)
@@ -100,12 +104,22 @@ class AppServiceProvider extends ServiceProvider
         // Consulta de estado: tope por conexión (además, el controlador
         // limita los intentos fallidos por correo y por radicado).
         RateLimiter::for('pqrs-tracking', fn (Request $request) => [
-            Limit::perMinute(10)->by('pqrs-tracking-minute|'.tenant('id').'|'.$request->ip()),
-            Limit::perHour(60)->by('pqrs-tracking-hour|'.tenant('id').'|'.$request->ip()),
+            Limit::perMinute(10)->by('pqrs-tracking-minute|'.tenant('id').'|'.$request->ip())
+                ->response(TooManyAttempts::backTo('radicado', 'consultas')),
+            Limit::perHour(60)->by('pqrs-tracking-hour|'.tenant('id').'|'.$request->ip())
+                ->response(TooManyAttempts::backTo('radicado', 'consultas')),
         ]);
 
-        RateLimiter::for('tenant-login', fn (Request $request) => Limit::perMinute(5)
-            ->by('tenant-login|'.tenant('id').'|'.mb_strtolower((string) $request->input('email')).'|'.$request->ip()));
+        // Ingreso del personal: por correo (adivinar una contraseña) y por
+        // conexión (probar muchos correos con una contraseña común).
+        RateLimiter::for('tenant-login', fn (Request $request) => [
+            Limit::perMinute(5)
+                ->by('tenant-login|'.tenant('id').'|'.mb_strtolower((string) $request->input('email')).'|'.$request->ip())
+                ->response(TooManyAttempts::backTo('email')),
+            Limit::perMinute(20)
+                ->by('tenant-login-ip|'.tenant('id').'|'.$request->ip())
+                ->response(TooManyAttempts::backTo('email')),
+        ]);
 
         // Ritmo del buzón que envía los correos de todas las empresas (ver
         // config/pqrs.php y QueuedMailNotification). Las claves son globales

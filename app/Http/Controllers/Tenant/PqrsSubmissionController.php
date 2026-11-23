@@ -9,6 +9,7 @@ use App\Models\Tenant;
 use App\Services\Captcha;
 use App\Services\PqrsFormRules;
 use App\Services\PqrsService;
+use App\Support\UploadLimits;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -31,10 +32,7 @@ class PqrsSubmissionController extends Controller
                 'types' => collect($schema['types'])->where('enabled', true)->values(),
             ],
             'documentTypes' => collect(PqrsFormRules::DOCUMENT_TYPES)->map(fn ($label, $value) => compact('value', 'label'))->values(),
-            'attachmentRules' => [
-                'max_kb' => config('pqrs.attachments.max_kb'),
-                'mimes' => config('pqrs.attachments.mimes'),
-            ],
+            'attachmentRules' => UploadLimits::forFrontend(),
             'initialType' => is_string($tipo = $request->query('tipo')) ? $tipo : null,
             'patientDocumentTypes' => collect(PqrsFormRules::PATIENT_DOCUMENT_TYPES)->map(fn ($label, $value) => compact('value', 'label'))->values(),
             'healthRegimes' => collect(PqrsFormRules::HEALTH_REGIMES)->map(fn ($label, $value) => compact('value', 'label'))->values(),
@@ -79,7 +77,7 @@ class PqrsSubmissionController extends Controller
         if ($captcha->enabled()) {
             $rules['altcha'] = ['required', function (string $attribute, mixed $value, Closure $fail) use ($captcha) {
                 if (! $captcha->verify($value)) {
-                    $fail('La verificación venció o no es válida. Marque de nuevo «No soy un robot».');
+                    $fail('La verificación venció o no es válida. Marca de nuevo «No soy un robot».');
                 }
             }];
         }
@@ -87,10 +85,11 @@ class PqrsSubmissionController extends Controller
         $data = $request->validate(
             $rules,
             [
-                'altcha.required' => 'Marque la casilla «No soy un robot».',
+                'altcha.required' => 'Marca la casilla «No soy un robot».',
                 'requester_is_affected.required' => 'Indica quién recibió el servicio.',
                 'attended_on.before_or_equal' => 'La fecha de atención no puede ser posterior a hoy.',
                 ...PqrsFormRules::emailMessages(),
+                ...UploadLimits::messages('attachments', (int) $schema['max_attachments']),
             ],
             PqrsFormRules::attributes($schema),
         );
@@ -99,7 +98,7 @@ class PqrsSubmissionController extends Controller
         // puede corregir otros campos sin repetir la verificación.
         if ($captcha->enabled() && ! $captcha->consume($request->input('altcha'))) {
             throw ValidationException::withMessages([
-                'altcha' => 'Esta verificación ya se usó. Marque de nuevo «No soy un robot».',
+                'altcha' => 'Esta verificación ya se usó. Marca de nuevo «No soy un robot».',
             ]);
         }
 
@@ -117,6 +116,8 @@ class PqrsSubmissionController extends Controller
             'risk' => $pqrs->risk_level?->label(),
             'subject' => $pqrs->subject,
             'email' => $pqrs->requester_email,
+            // Si ya se le enviaron varios acuses hoy, este no sale por correo.
+            'emailed' => $service->acknowledged,
             'created_at' => $pqrs->created_at,
             'due_at' => $pqrs->due_at,
             'sla_days' => $type['sla_days'] ?? null,

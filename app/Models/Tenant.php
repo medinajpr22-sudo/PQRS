@@ -200,7 +200,8 @@ class Tenant extends BaseTenant implements TenantWithDatabase
 
     public function primaryDomain(): ?string
     {
-        return $this->domains->first()?->domain;
+        // El primero que se registró (sin orden, la base podría devolver otro).
+        return $this->domains->sortBy('id')->first()?->domain;
     }
 
     /**

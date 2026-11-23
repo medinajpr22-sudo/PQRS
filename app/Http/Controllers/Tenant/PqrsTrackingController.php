@@ -25,6 +25,13 @@ class PqrsTrackingController extends Controller
     /** Intentos fallidos por correo o por radicado, cada hora. */
     private const MAX_FAILED_ATTEMPTS = 8;
 
+    /**
+     * Minutos que dura el acceso a una consulta. En un computador compartido
+     * (la sala de espera de una clínica), quien llegue después no puede
+     * volver atrás y ver la solicitud ni los adjuntos del anterior.
+     */
+    public const ACCESS_MINUTES = 30;
+
     public function create(Request $request): Response
     {
         // La barra «Hacer seguimiento» del inicio trae el radicado ya escrito;
@@ -47,9 +54,11 @@ class PqrsTrackingController extends Controller
         // Los radicados son consecutivos: además del tope por conexión, se
         // limitan los intentos fallidos por correo y por radicado, para que
         // nadie pruebe números con el correo de otra persona (o al revés).
+        // El del radicado va por conexión: si no, cualquiera podría bloquearle
+        // la consulta al dueño del radicado con 8 intentos fallidos.
         $keys = [
             'tracking-email|'.tenant('id').'|'.$email,
-            'tracking-radicado|'.tenant('id').'|'.$radicado,
+            'tracking-radicado|'.tenant('id').'|'.$radicado.'|'.$request->ip(),
         ];
 
         foreach ($keys as $key) {
@@ -74,14 +83,14 @@ class PqrsTrackingController extends Controller
             ]);
         }
 
-        $request->session()->put("tracking.{$pqrs->radicado}", true);
+        $request->session()->put("tracking.{$pqrs->radicado}", now()->getTimestamp());
 
         return to_route('tenant.tracking.show', $pqrs);
     }
 
     public function show(Request $request, Pqrs $pqrs): Response|RedirectResponse
     {
-        if (! $request->session()->get("tracking.{$pqrs->radicado}")) {
+        if (! self::hasAccess($request, $pqrs)) {
             return to_route('tenant.tracking.create');
         }
 
@@ -92,6 +101,7 @@ class PqrsTrackingController extends Controller
         $pqrs->load(['activities' => fn ($q) => $q->where('is_public', true), 'activities.attachments']);
 
         return Inertia::render('tenant/portal/track-result', [
+            'accessMinutes' => self::ACCESS_MINUTES,
             'pqrs' => [
                 'radicado' => $pqrs->radicado,
                 'type' => $type['label'] ?? $pqrs->type,
@@ -122,7 +132,7 @@ class PqrsTrackingController extends Controller
     public function attachment(Request $request, Pqrs $pqrs, PqrsAttachment $attachment): StreamedResponse|RedirectResponse
     {
         // Igual que si el radicado no existiera (ver ->missing() en las rutas).
-        if (! $request->session()->get("tracking.{$pqrs->radicado}")) {
+        if (! self::hasAccess($request, $pqrs)) {
             return to_route('tenant.tracking.create');
         }
 
@@ -130,5 +140,25 @@ class PqrsTrackingController extends Controller
         abort_unless($attachment->isPublic(), 404);
 
         return Storage::disk('local')->download($attachment->path, $attachment->original_name);
+    }
+
+    /**
+     * «Cerrar consulta»: termina el acceso a esta solicitud en este navegador.
+     */
+    public function forget(Request $request, string $radicado): RedirectResponse
+    {
+        $request->session()->forget('tracking.'.Str::upper($radicado));
+
+        return to_route('tenant.tracking.create');
+    }
+
+    /**
+     * ¿Este navegador consultó la solicitud (radicado + correo) hace poco?
+     */
+    private static function hasAccess(Request $request, Pqrs $pqrs): bool
+    {
+        $since = $request->session()->get("tracking.{$pqrs->radicado}");
+
+        return is_int($since) && $since >= now()->subMinutes(self::ACCESS_MINUTES)->getTimestamp();
     }
 }

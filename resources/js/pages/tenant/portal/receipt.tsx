@@ -13,6 +13,8 @@ type Props = {
         risk: string | null;
         subject: string;
         email: string;
+        /** Falso si hoy ya se enviaron varios acuses a ese correo. */
+        emailed: boolean;
         created_at: string;
         due_at: string;
         sla_days: number | null;
@@ -34,9 +36,25 @@ export default function Receipt({ receipt }: Props) {
                     ¡Tu solicitud fue radicada!
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                    Guarda este número para consultar el estado de tu solicitud.
-                    También lo enviamos a{' '}
-                    <strong className="text-zinc-700">{receipt.email}</strong>.
+                    Guarda este número para consultar el estado de tu solicitud.{' '}
+                    {receipt.emailed ? (
+                        <>
+                            También lo enviamos a{' '}
+                            <strong className="text-zinc-700">
+                                {receipt.email}
+                            </strong>
+                            .
+                        </>
+                    ) : (
+                        <>
+                            Esta vez no lo enviamos por correo, porque hoy ya
+                            enviamos varios a{' '}
+                            <strong className="text-zinc-700">
+                                {receipt.email}
+                            </strong>
+                            : anótalo o tómale una foto.
+                        </>
+                    )}
                 </p>
 
                 <div className="mx-auto mt-6 w-fit rounded-2xl border-2 border-dashed border-(--brand) bg-(--brand-soft) px-8 py-5">

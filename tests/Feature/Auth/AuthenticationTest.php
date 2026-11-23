@@ -73,5 +73,19 @@ test('users are rate limited', function () {
         'password' => 'wrong-password',
     ]);
 
-    $response->assertTooManyRequests();
+    // Vuelve al formulario con el aviso en español (no a la página de error).
+    $response->assertRedirect()
+        ->assertSessionHasErrors(['email' => 'Demasiados intentos seguidos. Espera 60 segundos e inténtalo de nuevo.']);
+    $this->assertGuest();
+});
+
+test('one connection cannot try many accounts in a row', function () {
+    foreach (range(1, 20) as $i) {
+        $this->post(route('login.store'), ['email' => "persona{$i}@example.com", 'password' => 'Clave-comun-1']);
+    }
+
+    $this->post(route('login.store'), ['email' => 'otra@example.com', 'password' => 'Clave-comun-1'])
+        ->assertSessionHasErrors('email');
+
+    expect(session('errors')->first('email'))->toStartWith('Demasiados intentos seguidos. Espera');
 });

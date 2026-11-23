@@ -10,6 +10,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 
@@ -24,6 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Cabeceras de seguridad del navegador en todas las respuestas.
         $middleware->append(SecurityHeaders::class);
+
+        // Proxies de confianza según TRUSTED_PROXIES (ver App\Http\Middleware\TrustProxies).
+        $middleware->replace(TrustProxies::class, App\Http\Middleware\TrustProxies::class);
 
         $middleware->alias([
             'central' => EnsureCentralDomain::class,

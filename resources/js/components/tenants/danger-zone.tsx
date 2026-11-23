@@ -1,5 +1,6 @@
 import { Form, router } from '@inertiajs/react';
 import { PauseCircle, PlayCircle, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import TenantController from '@/actions/App/Http/Controllers/Central/TenantController';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import type { TenantSummary } from '@/types';
 
 export function DangerZone({ tenant }: { tenant: TenantSummary }) {
     const active = tenant.status === 'active';
+    const [saving, setSaving] = useState(false);
 
     return (
         <Card className="border-red-200 dark:border-red-900/50">
@@ -48,11 +50,16 @@ export function DangerZone({ tenant }: { tenant: TenantSummary }) {
                     </div>
                     <Button
                         variant="outline"
+                        disabled={saving}
                         onClick={() =>
                             router.patch(
                                 tenants.status.update.url(tenant.id),
-                                {},
-                                { preserveScroll: true },
+                                { status: active ? 'suspended' : 'active' },
+                                {
+                                    preserveScroll: true,
+                                    onStart: () => setSaving(true),
+                                    onFinish: () => setSaving(false),
+                                },
                             )
                         }
                     >

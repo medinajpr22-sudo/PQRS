@@ -27,22 +27,25 @@ Route::middleware('central')->group(function () {
         Route::get('dashboard', DashboardController::class)->name('dashboard');
 
         Route::get('empresas', [TenantController::class, 'index'])->name('tenants.index');
-        Route::get('empresas/crear', [TenantController::class, 'create'])->name('tenants.create');
-        Route::post('empresas', [TenantController::class, 'store'])->name('tenants.store');
-        Route::get('empresas/{tenant}/editar', [TenantController::class, 'edit'])->name('tenants.edit');
-        Route::put('empresas/{tenant}', [TenantController::class, 'update'])->name('tenants.update');
-        Route::delete('empresas/{tenant}', [TenantController::class, 'destroy'])->name('tenants.destroy');
-
-        Route::post('empresas/{tenant}/diseno', [TenantThemeController::class, 'update'])->name('tenants.theme.update');
-        Route::put('empresas/{tenant}/formulario', [TenantFormController::class, 'update'])->name('tenants.form.update');
-        Route::patch('empresas/{tenant}/estado', [TenantStatusController::class, 'update'])->name('tenants.status.update');
-        Route::put('empresas/{tenant}/administradores/{admin}', [TenantAdminController::class, 'update'])
-            ->whereNumber('admin')
-            ->name('tenants.admins.update');
 
         // Datos personales de todas las empresas y acceso total a la
-        // plataforma: piden confirmar la contraseña (vale por 3 horas).
+        // plataforma: piden confirmar la contraseña (vale por 3 horas). Así,
+        // quien se encuentre una sesión abierta no puede borrar una empresa,
+        // cambiarle el administrador o descargar los datos de los pacientes.
         Route::middleware(RequirePassword::class)->group(function () {
+            Route::get('empresas/crear', [TenantController::class, 'create'])->name('tenants.create');
+            Route::post('empresas', [TenantController::class, 'store'])->name('tenants.store');
+            Route::get('empresas/{tenant}/editar', [TenantController::class, 'edit'])->name('tenants.edit');
+            Route::put('empresas/{tenant}', [TenantController::class, 'update'])->name('tenants.update');
+            Route::delete('empresas/{tenant}', [TenantController::class, 'destroy'])->name('tenants.destroy');
+
+            Route::post('empresas/{tenant}/diseno', [TenantThemeController::class, 'update'])->name('tenants.theme.update');
+            Route::put('empresas/{tenant}/formulario', [TenantFormController::class, 'update'])->name('tenants.form.update');
+            Route::patch('empresas/{tenant}/estado', [TenantStatusController::class, 'update'])->name('tenants.status.update');
+            Route::put('empresas/{tenant}/administradores/{admin}', [TenantAdminController::class, 'update'])
+                ->whereNumber('admin')
+                ->name('tenants.admins.update');
+
             // PQRS de todas las empresas: ver, descargar en Excel y eliminar.
             Route::get('pqrs', [PqrsController::class, 'index'])->name('pqrs.index');
             Route::get('pqrs/exportar', [PqrsController::class, 'export'])->name('pqrs.export');

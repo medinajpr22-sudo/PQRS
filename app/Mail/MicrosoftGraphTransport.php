@@ -106,7 +106,8 @@ final class MicrosoftGraphTransport extends AbstractTransport
     {
         return Http::withToken($this->token())
             ->withBody($mime, 'text/plain')
-            ->timeout(60)
+            // Corto: la cola corta el trabajo a los 85 s (ver QueuedMailNotification).
+            ->timeout(25)
             ->post(sprintf(self::GRAPH_URL, rawurlencode($this->mailbox)));
     }
 
@@ -118,7 +119,7 @@ final class MicrosoftGraphTransport extends AbstractTransport
             return $cached['token'];
         }
 
-        $response = Http::asForm()->timeout(30)->post(sprintf(self::TOKEN_URL, rawurlencode($this->tenantId)), [
+        $response = Http::asForm()->timeout(15)->post(sprintf(self::TOKEN_URL, rawurlencode($this->tenantId)), [
             'client_id' => $this->clientId,
             'client_secret' => $this->clientSecret,
             'scope' => 'https://graph.microsoft.com/.default',

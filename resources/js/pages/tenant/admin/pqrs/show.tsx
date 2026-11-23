@@ -44,6 +44,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatDate, formatDateTime, formatFileSize } from '@/lib/format';
 import { responseTemplates, suggestedTemplate } from '@/lib/response-templates';
 import type { ResponseTemplate } from '@/lib/response-templates';
+import { describeLimits, pickFiles } from '@/lib/upload-limits';
+import type { UploadRules } from '@/lib/upload-limits';
 import { cn } from '@/lib/utils';
 import admin from '@/routes/tenant/admin';
 import type {
@@ -92,6 +94,11 @@ type Props = {
     canAssignOthers: boolean;
     /** Con responsable, solo él o un administrador cambian el estado. */
     canChangeStatus: boolean;
+    attachmentRules: UploadRules;
+    /** Archivos por respuesta o nota. */
+    maxFiles: number;
+    /** Falso si su responsable fue desactivado o ya no tiene la sede. */
+    assigneeAvailable: boolean;
     sedes: { value: number; label: string }[];
 };
 
@@ -141,6 +148,9 @@ export default function PqrsShow({
     staff,
     canAssignOthers,
     canChangeStatus,
+    attachmentRules,
+    maxFiles,
+    assigneeAvailable,
     sedes,
 }: Props) {
     const { auth, errors, tenant, name: appName } = usePage().props;
@@ -160,10 +170,13 @@ export default function PqrsShow({
     const [reason, setReason] = useState('');
     const [saving, setSaving] = useState(false);
     const [confirmTake, setConfirmTake] = useState(false);
+    const [fileProblem, setFileProblem] = useState<string | null>(null);
     const [assignOpen, setAssignOpen] = useState(false);
     const isMine = pqrs.assignee?.id === auth.user.id;
     // Un agente solo puede asumir una solicitud libre; el administrador, cualquiera.
-    const canTake = !isMine && (!pqrs.assignee || canAssignOthers);
+    // Libre también si su responsable ya no puede atenderla.
+    const canTake =
+        !isMine && (!pqrs.assignee || !assigneeAvailable || canAssignOthers);
     const isOpen = pqrs.status === 'radicada' || pqrs.status === 'en_tramite';
     const isClosed = pqrs.status === 'cerrada';
     // Una PQRS cerrada solo admite notas internas: hay que reabrirla para
@@ -178,7 +191,6 @@ export default function PqrsShow({
     const [draft, setDraft] = useState<{
         title: string;
         previous: string;
-        placeholders: string[];
     } | null>(null);
     const templates = useMemo(
         () =>
@@ -194,18 +206,25 @@ export default function PqrsShow({
             }),
         [pqrs, tenant, appName, auth.user.name],
     );
+    // Los textos por completar de las tres plantillas: se revisan siempre,
+    // no solo los de la última elegida (p. ej. tras «Deshacer» puede volver
+    // el texto de otra plantilla, o alguien pegar una).
+    const placeholders = useMemo(
+        () => [...new Set(templates.flatMap((t) => t.placeholders))],
+        [templates],
+    );
 
-    // Mientras queden textos [entre corchetes] de la plantilla, el navegador
+    // Mientras queden textos [entre corchetes] de una plantilla, el navegador
     // no deja enviar la respuesta (para no mandarle eso al ciudadano). En
     // una nota interna no se exige.
     useEffect(() => {
         if (bodyRef.current) {
             syncPlaceholders(
                 bodyRef.current,
-                mode === 'response' ? (draft?.placeholders ?? []) : [],
+                mode === 'response' ? placeholders : [],
             );
         }
-    }, [mode, draft]);
+    }, [mode, draft, placeholders]);
 
     const applyTemplate = (template: ResponseTemplate) => {
         const el = bodyRef.current;
@@ -217,7 +236,6 @@ export default function PqrsShow({
         setDraft({
             title: template.title,
             previous: el.value,
-            placeholders: template.placeholders,
         });
         el.value = template.body;
 
@@ -584,7 +602,10 @@ export default function PqrsShow({
                                     id="pqrs-reply"
                                     options={{ preserveScroll: true }}
                                     resetOnSuccess
-                                    onSuccess={() => setDraft(null)}
+                                    onSuccess={() => {
+                                        setDraft(null);
+                                        setFileProblem(null);
+                                    }}
                                     onFinish={() => setConfirmTake(false)}
                                     className="space-y-3"
                                 >
@@ -615,13 +636,10 @@ export default function PqrsShow({
                                                         : 'Escribe una nota visible solo para el equipo…'
                                                 }
                                                 onInput={(e) => {
-                                                    if (
-                                                        mode === 'response' &&
-                                                        draft
-                                                    ) {
+                                                    if (mode === 'response') {
                                                         syncPlaceholders(
                                                             e.currentTarget,
-                                                            draft.placeholders,
+                                                            placeholders,
                                                         );
                                                     }
                                                 }}
@@ -654,12 +672,51 @@ export default function PqrsShow({
                                             )}
                                             <InputError message={errors.body} />
                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                                <input
-                                                    type="file"
-                                                    name="attachments[]"
-                                                    multiple
-                                                    className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium"
-                                                />
+                                                <div className="space-y-1">
+                                                    <input
+                                                        type="file"
+                                                        name="attachments[]"
+                                                        multiple
+                                                        accept={attachmentRules.mimes
+                                                            .map((m) => `.${m}`)
+                                                            .join(',')}
+                                                        onChange={(e) => {
+                                                            // El navegador no deja enviar mientras
+                                                            // haya un archivo que el servidor rechazaría.
+                                                            const { problems } =
+                                                                pickFiles(
+                                                                    [],
+                                                                    Array.from(
+                                                                        e.target
+                                                                            .files ??
+                                                                            [],
+                                                                    ),
+                                                                    attachmentRules,
+                                                                    maxFiles,
+                                                                );
+                                                            e.target.setCustomValidity(
+                                                                problems[0] ??
+                                                                    '',
+                                                            );
+                                                            setFileProblem(
+                                                                problems[0] ??
+                                                                    null,
+                                                            );
+                                                        }}
+                                                        aria-describedby="reply-files-hint"
+                                                        className="text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                                                    />
+                                                    <p
+                                                        id="reply-files-hint"
+                                                        className="text-xs text-muted-foreground"
+                                                    >
+                                                        Hasta {maxFiles}{' '}
+                                                        archivos ·{' '}
+                                                        {describeLimits(
+                                                            attachmentRules,
+                                                        )}
+                                                    </p>
+                                                </div>
                                                 <Button
                                                     type={
                                                         mode === 'response' &&
@@ -706,6 +763,7 @@ export default function PqrsShow({
                                             </div>
                                             <InputError
                                                 message={
+                                                    fileProblem ??
                                                     Object.entries(errors).find(
                                                         ([k]) =>
                                                             k.startsWith(
@@ -823,18 +881,21 @@ export default function PqrsShow({
                                     <MapPin className="size-4 text-muted-foreground" />
                                     {pqrs.sede?.name ?? 'Sin sede'}
                                 </p>
-                                <SedeTransfer
-                                    radicado={pqrs.radicado}
-                                    options={sedes
-                                        .filter(
-                                            (s) => s.value !== pqrs.sede?.id,
-                                        )
-                                        .map((s) => ({
-                                            value: String(s.value),
-                                            label: s.label,
-                                        }))}
-                                    hasSede={pqrs.sede !== null}
-                                />
+                                {canChangeStatus && (
+                                    <SedeTransfer
+                                        radicado={pqrs.radicado}
+                                        options={sedes
+                                            .filter(
+                                                (s) =>
+                                                    s.value !== pqrs.sede?.id,
+                                            )
+                                            .map((s) => ({
+                                                value: String(s.value),
+                                                label: s.label,
+                                            }))}
+                                        hasSede={pqrs.sede !== null}
+                                    />
+                                )}
                             </CardContent>
                         </Card>
 

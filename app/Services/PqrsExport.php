@@ -10,6 +10,8 @@ use App\Support\PqrsFilters;
 use Closure;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Cell\DateTimeCell;
 use OpenSpout\Common\Entity\Cell\EmptyCell;
@@ -67,7 +69,28 @@ final class PqrsExport
         $columns = $this->columns($withCompany, $withHealth);
 
         $app = (string) config('app.name');
-        $options = new Options(properties: new Properties(
+
+        // El Excel se arma por partes en archivos temporales con datos de
+        // pacientes: van a una carpeta privada propia que se borra siempre,
+        // también si la descarga falla o se corta a mitad de camino.
+        $temp = storage_path('app/private/exportaciones/'.Str::uuid());
+        File::ensureDirectoryExists($temp, 0700);
+
+        try {
+            return $this->writeWith($temp, $app, $tenants, $filters, $path, $viewer, $scope, $columns);
+        } finally {
+            File::deleteDirectory($temp);
+        }
+    }
+
+    /**
+     * @param  list<Tenant>  $tenants
+     * @param  (Closure(Builder<Pqrs>): mixed)|null  $scope
+     * @param  list<array{label: string, width: int|float, format?: string, value: Closure}>  $columns
+     */
+    private function writeWith(string $temp, string $app, array $tenants, PqrsFilters $filters, string $path, ?User $viewer, ?Closure $scope, array $columns): int
+    {
+        $options = new Options(tempFolder: $temp, properties: new Properties(
             title: 'PQRS',
             application: $app,
             creator: $app,
