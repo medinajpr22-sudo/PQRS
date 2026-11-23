@@ -6,6 +6,7 @@ use App\Http\Controllers\Tenant\Admin\AttachmentController;
 use App\Http\Controllers\Tenant\Admin\AuthController;
 use App\Http\Controllers\Tenant\Admin\BrandingController;
 use App\Http\Controllers\Tenant\Admin\DashboardController;
+use App\Http\Controllers\Tenant\Admin\HelpDeskController;
 use App\Http\Controllers\Tenant\Admin\PqrsActivityController;
 use App\Http\Controllers\Tenant\Admin\PqrsController;
 use App\Http\Controllers\Tenant\Admin\SedeController;
@@ -76,6 +77,8 @@ Route::middleware([
             Route::post('logout', [AuthController::class, 'destroy'])->name('logout');
 
             Route::get('/', DashboardController::class)->name('dashboard');
+            // Mesa de ayuda de TIC (administradores y agentes).
+            Route::get('ayuda', HelpDeskController::class)->name('help');
             Route::get('pqrs', [PqrsController::class, 'index'])->name('pqrs.index');
             Route::get('pqrs/exportar', [PqrsController::class, 'export'])
                 ->middleware('can:export-pqrs')

@@ -745,7 +745,7 @@ test('pqrs without a sede are only visible to the company admin', function () {
     $this->actingAs($agente)->get(portal($tenant, "admin/pqrs/{$radicado}"))->assertOk();
 });
 
-test('the super admin edits the name and email of a company admin', function () {
+test('the super admin edits the name, email and password of a company admin', function () {
     $superAdmin = User::factory()->create();
     $tenant = makeCompany('phi');
     [$admin, $otro, $agente] = $tenant->run(fn () => [
@@ -779,9 +779,26 @@ test('the super admin edits the name and email of a company admin', function () 
         ->put($url($agente), ['name' => 'X', 'email' => 'x@phi.test'])
         ->assertNotFound();
 
-    // Ya entra al panel de la empresa con el correo nuevo.
+    // Olvidó su contraseña: el super administrador le pone una nueva y se
+    // cierran sus sesiones abiertas en el panel de la empresa.
+    $tenant->run(fn () => DB::table('sessions')->insert([
+        'id' => 'sesion-laura', 'user_id' => $admin->id, 'ip_address' => '127.0.0.1',
+        'user_agent' => 'prueba', 'payload' => '', 'last_activity' => time(),
+    ]));
+    $this->actingAs($superAdmin)
+        ->put($url($admin), ['name' => 'Laura Directora', 'email' => 'laura@phi.test', 'password' => 'corta'])
+        ->assertSessionHasErrors('password');
+    $this->actingAs($superAdmin)
+        ->put($url($admin), ['name' => 'Laura Directora', 'email' => 'laura@phi.test', 'password' => 'Nueva-Clave-2026'])
+        ->assertSessionHasNoErrors();
+
+    expect($tenant->run(fn () => DB::table('sessions')->where('user_id', $admin->id)->exists()))->toBeFalse();
+
+    // Ya entra al panel de la empresa con el correo y la contraseña nuevos (la anterior no sirve).
     $this->app['auth']->forgetGuards();
     $this->post(portal($tenant, 'admin/login'), ['email' => 'laura@phi.test', 'password' => 'password'])
+        ->assertSessionHasErrors('email');
+    $this->post(portal($tenant, 'admin/login'), ['email' => 'laura@phi.test', 'password' => 'Nueva-Clave-2026'])
         ->assertRedirect(route('tenant.admin.dashboard'));
 });
 
@@ -2019,4 +2036,19 @@ test('old office files that can carry macros are rejected', function () {
     $this->post(portal($tenant, 'radicar'), validSubmission([
         'attachments' => [UploadedFile::fake()->create('acta.docx', 10, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')],
     ]))->assertSessionHasNoErrors();
+});
+
+test('admins and agents find the help desk in their panel', function () {
+    $tenant = makeCompany('ayuda');
+    [$admin, $agente] = $tenant->run(fn () => [User::first(), makeStaff('lina')]);
+
+    // Sin sesión, al inicio de sesión del personal.
+    $this->get(portal($tenant, 'admin/ayuda'))->assertRedirect(portal($tenant, 'admin/login'));
+
+    foreach ([$admin, $agente] as $user) {
+        $this->actingAs($user)->get(portal($tenant, 'admin/ayuda'))->assertInertia(fn ($page) => $page
+            ->component('tenant/admin/help')
+            ->where('helpDeskUrl', 'https://tic.itmsas.net')
+            ->where('company', 'Empresa ayuda'));
+    }
 });

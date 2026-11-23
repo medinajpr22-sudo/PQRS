@@ -3,6 +3,7 @@ import {
     ExternalLink,
     Inbox,
     LayoutGrid,
+    LifeBuoy,
     MapPin,
     Palette,
     UserCheck,
@@ -83,6 +84,16 @@ export function TenantAdminSidebar() {
               ]
             : [];
 
+    // Mesa de ayuda de TIC: para todos (administrador y agentes).
+    const support: NavItem[] = [
+        {
+            title: 'Mesa de ayuda',
+            href: admin.help(),
+            icon: LifeBuoy,
+            isActive: currentUrl.startsWith('/admin/ayuda'),
+        },
+    ];
+
     return (
         <Sidebar collapsible="icon" variant="floating">
             <SidebarHeader className="p-3">
@@ -104,6 +115,7 @@ export function TenantAdminSidebar() {
                 {administration.length > 0 && (
                     <NavMain items={administration} label="Administración" />
                 )}
+                <NavMain items={support} label="Soporte" />
                 <SidebarGroup className="px-2 py-1">
                     <SidebarGroupLabel className="text-[11px] font-bold tracking-[0.16em] text-sidebar-foreground/70 uppercase">
                         Portal

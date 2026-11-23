@@ -47,6 +47,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Mesa de ayuda
+    |--------------------------------------------------------------------------
+    |
+    | A dónde van los administradores y agentes de las empresas cuando
+    | necesitan ayuda con la aplicación o quieren proponer una mejora
+    | (módulo «Mesa de ayuda» del panel).
+    |
+    */
+    'help_desk_url' => env('PQRS_HELP_DESK_URL', 'https://tic.itmsas.net'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Adjuntos
     |--------------------------------------------------------------------------
     |
